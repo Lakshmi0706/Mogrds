@@ -1,9 +1,14 @@
+import streamlit as st
 import pandas as pd
 from duckduckgo_search import DDGS
 
-# Load retailer names from the Excel file
-retailer_df = pd.read_excel("retailer.xlsx", engine="openpyxl")
-retailer_names = retailer_df.iloc[:, 0].dropna().unique()
+# Load retailer names from Excel
+try:
+    retailer_df = pd.read_excel("retailer.xlsx", engine="openpyxl")
+    retailer_names = retailer_df.iloc[:, 0].dropna().unique()
+except Exception as e:
+    st.error(f"Error loading retailer.xlsx: {e}")
+    retailer_names = []
 
 # Function to search for merchant name using DuckDuckGo
 def get_merchant_name(retailer_name):
@@ -21,18 +26,20 @@ def get_merchant_name(retailer_name):
         return title
     return "Not Found"
 
-# Perform search and compile results
-results = []
-for name in retailer_names:
-    merchant = get_merchant_name(name)
-    results.append({
-        "Retailer Name": name,
-        "Merchant Name": merchant
-    })
+# Streamlit App
+st.title("Retailer Merchant Extractor")
 
-# Create DataFrame and save to CSV
-results_df = pd.DataFrame(results)
-results_df.to_csv("retailer_merchant_mapping.csv", index=False)
+if st.button("Run Merchant Extraction"):
+    results = []
+    for name in retailer_names:
+        merchant = get_merchant_name(name)
+        results.append({
+            "Retailer Name": name,
+            "Merchant Name": merchant
+        })
 
-print("Merchant name extraction completed and saved to 'retailer_merchant_mapping.csv'.")
+    results_df = pd.DataFrame(results)
+    st.write("### Extracted Merchant Names", results_df)
 
+    csv = results_df.to_csv(index=False).encode("utf-8")
+    st.download_button("Download Results as CSV", csv, "retailer_merchant_mapping.csv", "text/csv")
