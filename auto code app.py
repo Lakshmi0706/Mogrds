@@ -1,52 +1,89 @@
 import streamlit as st
-from bs4 import BeautifulSoup
 import requests
-from duckduckgo_search import DDGS
-from urllib.parse import urljoin
+from bs4 import BeautifulSoup
+import re
+import pandas as pd
 
-def find_retailer(description):
-    query = description + " official site USA"
-    with DDGS() as ddgs:
-        results = list(ddgs.text(query, max_results=10))
+st.title("Retailer Finder (CSV Upload + Results Export)")
 
-    for result in results:
-        url = result.get("href")
-        if not url:
-            continue
+# File uploader for CSV
+uploaded_file = st.file_uploader("Upload Retailers CSV", type=["csv"])
 
-        # Filter domains (skip Wikipedia, Yelp, etc.)
-        blacklist = ["wikipedia.org", "yelp.", "linkedin.", "facebook.", "amazon."]
-        if any(b in url for b in blacklist):
-            continue
+# Session state to store results
+if "results" not in st.session_state:
+    st.session_state["results"] = []
 
-        try:
-            page = requests.get(url, timeout=5)
-            soup = BeautifulSoup(page.content, "html.parser")
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    df["Retailer Name"] = df["Retailer Name"].str.upper().str.strip()
+    retailer_data = dict(zip(df["Retailer Name"], df["URL"]))
 
-            logos = soup.find_all("img")
-            for logo in logos:
-                alt_text = logo.get("alt", "").lower()
-                classes = " ".join(logo.get("class", [])).lower()
+    st.success(f"✅ Loaded {len(retailer_data)} retailers from CSV")
 
-                if "logo" in alt_text or "logo" in classes:
-                    logo_url = urljoin(url, logo.get("src"))
-                    return logo_url, url
-        except Exception:
-            continue
+    retailer_desc = st.text_input("Enter retailer description", "")
 
-    return None, None
+    if st.button("Search"):
+        if retailer_desc.strip() == "":
+            st.warning("⚠️ Please enter a retailer description")
+        else:
+            query = retailer_desc.strip().upper()
 
-# Streamlit UI
-st.title("Retailer Finder")
+            if query in retailer_data:
+                url = retailer_data[query]
 
-description = st.text_input("Enter retailer description")
+                try:
+                    response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, "html.parser")
+                        logo = soup.find("img", {"src": re.compile("logo", re.I)})
 
-if st.button("Search"):
-    logo_url, retailer_url = find_retailer(description)
+                        if logo:
+                            logo_url = logo["src"]
+                            if logo_url.startswith("//"):
+                                logo_url = "https:" + logo_url
+                            elif logo_url.startswith("/"):
+                                logo_url = url.rstrip("/") + logo_url
 
-    if logo_url:
-        st.image(logo_url, caption="Retailer Logo")
-        st.write("Retailer URL:", retailer_url)
-        st.write("Status:", "Yes ✅")
-    else:
-        st.write("Status:", "No ❌")
+                            st.image(logo_url, caption=f"{query} Logo")
+                            st.success("Status: Yes ✅")
+                            st.write(f"Retailer URL: {url}")
+                            status = "Yes ✅"
+                        else:
+                            st.error("Status: No ❌ (Logo not found)")
+                            st.write(f"Retailer URL: {url}")
+                            status = "No ❌ (Logo not found)"
+                            logo_url = None
+                    else:
+                        st.error(f"⚠️ Failed to access site. Status code: {response.status_code}")
+                        status = "Error"
+                        logo_url = None
+                except Exception as e:
+                    st.error(f"❌ Error fetching data: {str(e)}")
+                    status = "Error"
+                    logo_url = None
+
+                # Save result in session
+                st.session_state["results"].append({
+                    "Retailer Name": query,
+                    "Retailer URL": url,
+                    "Status": status,
+                    "Logo URL": logo_url
+                })
+            else:
+                st.error("❌ Retailer not found in uploaded CSV")
+
+    # Show results table
+    if st.session_state["results"]:
+        results_df = pd.DataFrame(st.session_state["results"])
+        st.subheader("Results so far:")
+        st.dataframe(results_df)
+
+        # Download buttons
+        csv = results_df.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Download Results as CSV", data=csv, file_name="retailer_results.csv", mime="text/csv")
+
+        excel = results_df.to_excel("retailer_results.xlsx", index=False)
+        with open("retailer_results.xlsx", "rb") as f:
+            st.download_button("⬇️ Download Results as Excel", data=f, file_name="retailer_results.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+else:
+    st.info("ℹ️ Please upload a CSV file to continue.")
