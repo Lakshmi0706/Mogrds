@@ -1,50 +1,90 @@
 import streamlit as st
 import pandas as pd
 import re
-from duckduckgo_search import DDGS  # safer than googlesearch
+from rapidfuzz import process, fuzz
+from duckduckgo_search import DDGS
+import json
 
-# --- Utility: Clean domain into merchant name ---
+# -------------------------
+# Load expanded retailer dictionary
+# -------------------------
+@st.cache_data
+def load_retailers():
+    # You can maintain this as a JSON file with 1000+ retailer names
+    # Example: ["Walmart", "Costco", "Sam's Club", ...]
+    try:
+        with open("retailers.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        # fallback mini-list if file not present
+        return [
+            "Walmart", "Costco", "Sam's Club", "BJ's Wholesale", "Kroger",
+            "Safeway", "Albertsons", "Publix", "Meijer", "Target",
+            "Dollar Tree", "Dollar General", "Family Dollar",
+            "CVS Pharmacy", "Walgreens", "Rite Aid", "Home Depot", "Lowe's"
+        ]
+
+KNOWN_RETAILERS = load_retailers()
+
+# -------------------------
+# Domain → Merchant Name
+# -------------------------
 def domain_to_merchant(domain: str) -> str:
+    if not domain:
+        return None
     domain = domain.lower()
     domain = re.sub(r'^www\.', '', domain)
-    name = domain.split('.')[0]  # take part before .com/.net
+    base = domain.split('.')[0]
 
-    # Expand common known short forms
     mapping = {
         "cvs": "CVS Pharmacy",
-        "bj": "BJ's Wholesale",
         "bjs": "BJ's Wholesale",
-        "kmart": "Kmart",
-        "homedepot": "Home Depot",
         "dollartree": "Dollar Tree",
-        "foodbazaar": "Food Bazaar",
-        "racetrac": "Race Trac",
+        "racetrac": "RaceTrac",
+        "homedepot": "Home Depot",
         "murphyusa": "Murphy USA",
         "sprouts": "Sprouts Farmers Market",
-        "frysfood": "Fry's Food Store",
+        "frysfood": "Fry's Food Store"
     }
-    if name in mapping:
-        return mapping[name]
+    if base in mapping:
+        return mapping[base]
 
-    # Default: title case words
-    return name.replace("-", " ").replace("_", " ").title()
+    return base.replace("-", " ").replace("_", " ").title()
 
-# --- Utility: Get first official domain ---
+# -------------------------
+# Fuzzy correction backup
+# -------------------------
+def fuzzy_correct(name: str) -> str:
+    best_match, score, _ = process.extractOne(
+        name, KNOWN_RETAILERS, scorer=fuzz.WRatio
+    )
+    return best_match if score >= 85 else None
+
+# -------------------------
+# DuckDuckGo Search
+# -------------------------
 def get_official_domain(query: str) -> str:
-    with DDGS() as ddgs:
-        results = ddgs.text(query, region="us-en", max_results=10)
-        for r in results:
-            url = r.get("href", "")
-            if any(x in url for x in ["facebook.com", "linkedin.com", "wikipedia.org", "instagram.com", "yelp.com", "reddit.com"]):
-                continue
-            # Extract domain
-            match = re.search(r"https?://([^/]+)/?", url)
-            if match:
-                return match.group(1)
+    try:
+        with DDGS() as ddgs:
+            results = ddgs.text(query, region="us-en", max_results=10)
+            for r in results:
+                url = r.get("href", "")
+                if any(x in url for x in [
+                    "facebook.com", "linkedin.com", "wikipedia.org",
+                    "instagram.com", "yelp.com", "reddit.com"
+                ]):
+                    continue
+                match = re.search(r"https?://([^/]+)/?", url)
+                if match:
+                    return match.group(1)
+    except Exception:
+        return None
     return None
 
-# --- Streamlit App ---
-st.title("Retailer OCR → Merchant Name Finder")
+# -------------------------
+# Streamlit App
+# -------------------------
+st.title("🛒 Retailer OCR → Merchant Name Finder (Live Search + Dictionary Fallback)")
 
 uploaded_file = st.file_uploader("Upload CSV with 'Retailer Name' column", type=["csv"])
 
@@ -56,18 +96,21 @@ if uploaded_file:
         results = []
 
         for retailer in df["Retailer Name"]:
-            query = f"{retailer} USA site:.com"
-            domain = get_official_domain(query)
+            ocr_input = str(retailer).strip()
 
-            if domain:
-                merchant = domain_to_merchant(domain)
-                status = "YES"
-            else:
-                merchant = None
-                status = "NO"
+            # Step 1: live search
+            query = f"{ocr_input} USA site:.com"
+            domain = get_official_domain(query)
+            merchant = domain_to_merchant(domain) if domain else None
+
+            # Step 2: fallback fuzzy correction
+            if not merchant:
+                merchant = fuzzy_correct(ocr_input)
+
+            status = "YES" if merchant else "NO"
 
             results.append({
-                "Retailer Name": retailer,
+                "Retailer Name (OCR Input)": ocr_input,
                 "Merchant Name": merchant,
                 "Status": status
             })
@@ -75,9 +118,8 @@ if uploaded_file:
         results_df = pd.DataFrame(results)
         st.dataframe(results_df)
 
-        # Download option
         st.download_button(
-            "Download Results as CSV",
+            "📥 Download Results as CSV",
             results_df.to_csv(index=False).encode("utf-8"),
             "merchant_results.csv",
             "text/csv"
