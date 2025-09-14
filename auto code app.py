@@ -3,7 +3,7 @@ import pandas as pd
 from duckduckgo_search import DDGS
 from urllib.parse import urlparse
 
-# Function to extract domain name as merchant name
+# Extract domain name as simplified retailer name
 def extract_domain_name(url):
     try:
         domain = urlparse(url).netloc
@@ -11,9 +11,9 @@ def extract_domain_name(url):
     except:
         return "Unknown"
 
-# Function to search for the official site
-def search_official_site(retailer_name):
-    query = f"{retailer_name} USA official site"
+# Search for official site and return simplified name
+def get_retailer_name(retailer_input):
+    query = f"{retailer_input} USA official site"
     with DDGS() as ddgs:
         results = [r for r in ddgs.text(query, max_results=10)]
     for r in results:
@@ -23,11 +23,11 @@ def search_official_site(retailer_name):
             "linkedin.com", "yelp.com", "twitter.com", "pinterest.com"
         ]):
             continue
-        return url
+        return extract_domain_name(url)
     return None
 
 # Streamlit App
-st.title("Retailer Finder (CSV Upload + Results Export)")
+st.title("Retailer Name Matcher (CSV Upload)")
 
 uploaded_file = st.file_uploader("Upload Retailers CSV", type=["csv"])
 
@@ -39,27 +39,26 @@ if uploaded_file is not None:
     else:
         st.success(f"Loaded {len(df)} retailers from CSV")
 
-        if st.button("Run Search"):
+        if st.button("Run Matching"):
             results = []
 
             for retailer in df["Retailer Name"].dropna().unique():
-                url = search_official_site(retailer)
-                merchant_name = extract_domain_name(url) if url else "Not Found"
+                matched_name = get_retailer_name(retailer)
+                status = "YES" if matched_name else "NO"
                 results.append({
-                    "Retailer Name": retailer,
-                    "Merchant Name (Simplified)": merchant_name,
-                    "Official Site URL": url if url else "N/A",
-                    "Status": "YES" if url else "NO"
+                    "Input Retailer Name": retailer,
+                    "Matched Retailer Name": matched_name if matched_name else "Not Found",
+                    "Status": status
                 })
 
             results_df = pd.DataFrame(results)
-            st.write("### Search Results", results_df)
+            st.write("### Matched Retailer Names", results_df)
 
             # Download results
             csv = results_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="Download Results as CSV",
                 data=csv,
-                file_name="retailer_results.csv",
+                file_name="matched_retailers.csv",
                 mime="text/csv"
             )
