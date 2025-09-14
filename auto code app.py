@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from duckduckgo_search import DDGS
 from urllib.parse import urlparse
+from difflib import SequenceMatcher
 
 # Extract domain name as simplified retailer name
 def extract_domain_name(url):
@@ -11,7 +12,11 @@ def extract_domain_name(url):
     except:
         return "Unknown"
 
-# Search for official site and return simplified name
+# Compute similarity score
+def similarity(a, b):
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+# Search for official site and return simplified name if similarity > 0.8
 def get_retailer_name(retailer_input):
     query = f"{retailer_input} USA official site"
     with DDGS() as ddgs:
@@ -23,11 +28,13 @@ def get_retailer_name(retailer_input):
             "linkedin.com", "yelp.com", "twitter.com", "pinterest.com"
         ]):
             continue
-        return extract_domain_name(url)
+        matched_name = extract_domain_name(url)
+        if similarity(retailer_input, matched_name) >= 0.8:
+            return matched_name
     return None
 
 # Streamlit App
-st.title("Retailer Name Matcher (CSV Upload)")
+st.title("Retailer Name Matcher (CSV Upload with Fuzzy Matching)")
 
 uploaded_file = st.file_uploader("Upload Retailers CSV", type=["csv"])
 
