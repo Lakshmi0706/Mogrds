@@ -1,68 +1,65 @@
 import streamlit as st
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
-import re
+from googlesearch import search
+from urllib.parse import urlparse
 
-# ---------- Helper function to extract merchant name ----------
-def get_merchant_name(retailer):
+# ---------- Helper Functions ----------
+def get_official_site(query):
+    """
+    Google search to find the first official retailer website
+    ignoring social media & wiki-type sites.
+    """
     try:
-        query = f"{retailer} USA official site"
-        url = f"https://www.google.com/search?q={query}"
-
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Look for the first search result <h3>
-        h3 = soup.find("h3")
-        if h3:
-            merchant = h3.get_text().strip()
-            # Clean merchant name
-            merchant = re.sub(r"[-|•].*", "", merchant).strip()
-            return merchant
+        for url in search(query + " USA", num_results=10):
+            url = url.lower()
+            if any(ext in url for ext in [".com", ".us", ".net"]):
+                if not any(bad in url for bad in ["facebook", "instagram", "wikipedia", 
+                                                  "linkedin", "yelp", "twitter", "tiktok"]):
+                    return url
+    except Exception as e:
         return None
-    except Exception:
+    return None
+
+def extract_name(url):
+    """
+    Extract clean merchant name from domain.
+    Example: www.dollartree.com -> Dollar Tree
+    """
+    if not url:
         return None
+    domain = urlparse(url).netloc
+    domain = domain.replace("www.", "").split(".")[0]
+    return domain.replace("-", " ").title()
 
+# ---------- Streamlit UI ----------
+st.title("Retailer Merchant Finder")
 
-# ---------- Streamlit App ----------
-st.title("Retailer Finder (CSV Upload + Results Export)")
-
-uploaded_file = st.file_uploader("Upload Retailers CSV", type=["csv"])
+uploaded_file = st.file_uploader("Upload your retailers CSV", type=["csv"])
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    
+
     if "Retailer Name" not in df.columns:
-        st.error("CSV must have a column named 'Retailer Name'")
+        st.error("CSV must contain a 'Retailer Name' column.")
     else:
         st.success(f"Loaded {len(df)} retailers from CSV")
 
         if st.button("Run Search"):
             results = []
-            for retailer in df["Retailer Name"].dropna().unique():
-                merchant = get_merchant_name(retailer)
-                status = "YES" if merchant else "NO"
-                results.append({
-                    "Retailer Name": retailer,
-                    "Merchant Name": merchant if merchant else "None",
-                    "Status": status
-                })
-            
-            results_df = pd.DataFrame(results)
-            st.dataframe(results_df)
+            for retailer in df["Retailer Name"]:
+                official_site = get_official_site(retailer)
+                if official_site:
+                    merchant = extract_name(official_site)
+                    status = "YES"
+                else:
+                    merchant = None
+                    status = "NO"
+                results.append([retailer, merchant, status])
 
-            # Download button
-            csv = results_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="Download Results as CSV",
-                data=csv,
-                file_name="retailer_results.csv",
-                mime="text/csv"
-            )
+            result_df = pd.DataFrame(results, columns=["Retailer Name", "Merchant Name", "Status"])
+
+            st.dataframe(result_df)
+
+            # Download option
+            csv = result_df.to_csv(index=False).encode("utf-8")
+            st.download_button("Download Results as CSV", data=csv, file_name="merchant_results.csv", mime="text/csv")
