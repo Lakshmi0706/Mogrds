@@ -1,65 +1,48 @@
 import streamlit as st
 import pandas as pd
-from googlesearch import search
-from urllib.parse import urlparse
+from duckduckgo_search import DDGS
 
-# ---------- Helper Functions ----------
-def get_official_site(query):
-    """
-    Google search to find the first official retailer website
-    ignoring social media & wiki-type sites.
-    """
-    try:
-        for url in search(query + " USA", num_results=10):
-            url = url.lower()
-            if any(ext in url for ext in [".com", ".us", ".net"]):
-                if not any(bad in url for bad in ["facebook", "instagram", "wikipedia", 
-                                                  "linkedin", "yelp", "twitter", "tiktok"]):
-                    return url
-    except Exception as e:
-        return None
-    return None
+# Function to search official merchant site
+def search_official_site(retailer_name):
+    query = f"{retailer_name} USA official site"
+    with DDGS() as ddgs:
+        results = [r for r in ddgs.text(query, max_results=10)]
+    for r in results:
+        url = r.get("href", "")
+        title = r.get("title", "")
+        # Skip unwanted sites
+        if any(bad in url for bad in ["facebook.com", "instagram.com", "wikipedia.org", 
+                                      "linkedin.com", "yelp.com", "twitter.com"]):
+            continue
+        return title, url
+    return None, None
 
-def extract_name(url):
-    """
-    Extract clean merchant name from domain.
-    Example: www.dollartree.com -> Dollar Tree
-    """
-    if not url:
-        return None
-    domain = urlparse(url).netloc
-    domain = domain.replace("www.", "").split(".")[0]
-    return domain.replace("-", " ").title()
+# Streamlit App
+st.title("Retailer Finder (CSV Upload + Results Export)")
 
-# ---------- Streamlit UI ----------
-st.title("Retailer Merchant Finder")
+uploaded_file = st.file_uploader("Upload Retailers CSV", type=["csv"])
 
-uploaded_file = st.file_uploader("Upload your retailers CSV", type=["csv"])
-
-if uploaded_file:
+if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
+    st.success(f"Loaded {len(df)} retailers from CSV")
 
-    if "Retailer Name" not in df.columns:
-        st.error("CSV must contain a 'Retailer Name' column.")
-    else:
-        st.success(f"Loaded {len(df)} retailers from CSV")
+    if st.button("Run Search"):
+        results = []
+        for retailer in df["Retailer Name"].dropna().unique():
+            merchant_name, url = search_official_site(retailer)
+            if merchant_name:
+                status = "YES"
+            else:
+                status = "NO"
+            results.append({
+                "Retailer Name": retailer,
+                "Merchant Name": merchant_name if merchant_name else "None",
+                "Status": status
+            })
 
-        if st.button("Run Search"):
-            results = []
-            for retailer in df["Retailer Name"]:
-                official_site = get_official_site(retailer)
-                if official_site:
-                    merchant = extract_name(official_site)
-                    status = "YES"
-                else:
-                    merchant = None
-                    status = "NO"
-                results.append([retailer, merchant, status])
+        results_df = pd.DataFrame(results)
+        st.write(results_df)
 
-            result_df = pd.DataFrame(results, columns=["Retailer Name", "Merchant Name", "Status"])
-
-            st.dataframe(result_df)
-
-            # Download option
-            csv = result_df.to_csv(index=False).encode("utf-8")
-            st.download_button("Download Results as CSV", data=csv, file_name="merchant_results.csv", mime="text/csv")
+        # Download results
+        csv = results_df.to_csv(index=False).encode("utf-8")
+        st.download_button("Download Results as CSV", csv, "retailer_results.csv", "text/csv")
