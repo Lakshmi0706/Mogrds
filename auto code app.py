@@ -5,8 +5,27 @@ import requests
 from collections import Counter
 import time
 import random
+import re # Import regex for advanced cleaning
 
-# --- SEARCH AND UTILITY FUNCTIONS (NO CHANGES) ---
+# --- NEW UTILITY FUNCTION ---
+def clean_domain_to_name(domain):
+    """Converts a domain (e.g., 'dollartree.com') into a retailer name (e.g., 'Dollar Tree')."""
+    if domain == "Not found":
+        return domain
+    
+    # 1. Remove common TLDs (top-level domains) using regex
+    name = re.sub(r'\.(com|net|org|co|us|biz|info|io|ai|shop|store|app)$', '', domain, flags=re.IGNORECASE)
+    
+    # 2. Replace hyphens and dots with spaces
+    name = name.replace('-', ' ').replace('.', ' ')
+    
+    # 3. Capitalize words (Title Case)
+    name = name.title()
+    
+    return name.strip()
+
+
+# --- SEARCH AND UTILITY FUNCTIONS (UNMODIFIED) ---
 
 def search_google_web(description, api_key):
     """
@@ -63,8 +82,10 @@ def get_clean_domains(links_or_sources):
     ]
     for link in links_or_sources:
         try:
-            domain = urlparse(f"http://{link}").netloc.replace("www.", "")
-            if domain and not any(skip in domain.lower() for skip in skip_these):
+            parsed = urlparse(f"http://{link}")
+            domain = parsed.netloc.replace("www.", "")
+            
+            if domain and domain != "http:" and not any(skip in domain.lower() for skip in skip_these):
                 domains.append(domain)
         except Exception:
             continue
@@ -72,10 +93,12 @@ def get_clean_domains(links_or_sources):
 
 def analyze_domain_uniqueness(domains):
     """Determines the top domain and if it's a unique, clear winner."""
-    if not domains:
+    clean_domains = [d for d in domains if d]
+    
+    if not clean_domains:
         return "Not found", "No"
     
-    domain_counts = Counter(domains)
+    domain_counts = Counter(clean_domains)
     most_common_list = domain_counts.most_common(2)
     top_domain, top_count = most_common_list[0]
     
@@ -83,6 +106,7 @@ def analyze_domain_uniqueness(domains):
     if top_count > 1:
         if len(most_common_list) == 1 or top_count > most_common_list[1][1]:
             is_dominant = "Yes"
+            
     return top_domain, is_dominant
 
 # --- Streamlit App UI ---
@@ -90,7 +114,7 @@ def analyze_domain_uniqueness(domains):
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Output includes S.No., Retailer, Status, and Findings details.")
+st.caption("Retailer names are now displayed in a clean, human-readable format.")
 
 api_key = st.secrets.get("SERPAPI_KEY") if hasattr(st, 'secrets') else None
 if not api_key:
@@ -106,7 +130,6 @@ if uploaded_file and api_key:
             st.error("Upload failed! The CSV must contain a 'description' column.", icon="🚨")
             st.stop()
         
-        # NEW: Add S.No. column to the original DataFrame
         df['sno'] = range(1, 1 + len(df))
         
         st.success(f"File uploaded! Found {len(df)} brands to analyze.")
@@ -124,8 +147,6 @@ if uploaded_file and api_key:
                 for idx, row in df.iterrows():
                     description = row['description']
                     current_sno = row['sno']
-                    
-                    # Initialize findings for this row
                     findings = []
                     
                     status_text.text(f"Processing {current_sno}/{total}: {description[:50]}...")
@@ -134,58 +155,58 @@ if uploaded_file and api_key:
                     def run_searches(desc):
                         web_links, web_correction = search_google_web(desc, api_key)
                         web_domains = get_clean_domains(web_links)
-                        top_retailer, web_status = analyze_domain_uniqueness(web_domains)
+                        top_retailer_domain, web_status = analyze_domain_uniqueness(web_domains)
 
                         image_sources, image_correction = search_google_images(desc, api_key)
                         logo_domains = get_clean_domains(image_sources)
-                        top_logo_source, image_status = analyze_domain_uniqueness(logo_domains)
+                        top_logo_domain, image_status = analyze_domain_uniqueness(logo_domains)
                         
-                        return top_retailer, web_status, top_logo_source, image_status, web_correction, image_correction
+                        return top_retailer_domain, web_status, top_logo_domain, image_status, web_correction, image_correction
 
                     # PASS 1: Search with the original description
-                    (top_retailer, web_status, top_logo_source, image_status, 
+                    (top_retailer_domain, web_status, top_logo_domain, image_status, 
                      web_correction, image_correction) = run_searches(description)
 
                     final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
                     
-                    # Check for potential correction
                     corrected_query = web_correction or image_correction
-                    is_corrected = False
                     
                     # PASS 2: If first pass failed, try again with Google's corrected query
                     if final_status == "No" and corrected_query and corrected_query.lower() != description.lower():
                         status_text.text(f"Processing {current_sno}/{total}: Correcting to '{corrected_query}'...")
-                        time.sleep(0.5) # Brief pause to show the message
-                        is_corrected = True
+                        time.sleep(0.5) 
                         
                         # Re-run searches with the corrected query
-                        (top_retailer, web_status, top_logo_source, image_status, _, _) = run_searches(corrected_query)
+                        (top_retailer_domain, web_status, top_logo_domain, image_status, _, _) = run_searches(corrected_query)
                         
                         final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
                         
-                        # Update findings based on correction result
                         findings.append(f"Query corrected from '{description}' to '{corrected_query}'.")
 
-                    # --- Build Findings Message ---
+                    # --- Build Final Retailer Name and Findings Message ---
+                    
+                    # Determine the domain to use (prioritize web retailer if available, otherwise use image source)
+                    final_retailer_domain = top_retailer_domain
+                    if final_retailer_domain == "Not found" and top_logo_domain != "Not found":
+                        final_retailer_domain = top_logo_domain
+                        
+                    # CRITICAL: Convert the final domain to a human-readable name
+                    final_retailer_name = clean_domain_to_name(final_retailer_domain)
+
                     if final_status == "Yes":
                         if web_status == "Yes" and image_status == "Yes":
-                            findings.append("Unique presence confirmed by both Website and Logo dominance.")
+                            findings.append(f"Unique presence confirmed by both Website and Logo for '{final_retailer_name}'.")
                         elif web_status == "Yes":
-                            findings.append("Unique website found to be dominant.")
+                            findings.append(f"Unique website dominance found for retailer: '{final_retailer_name}'.")
                         elif image_status == "Yes":
-                            findings.append("Unique logo source found to be dominant.")
+                            findings.append(f"Unique logo dominance found for retailer: '{final_retailer_name}'.")
                     else:
                         findings.append("No dominant, unique website or logo was found.")
                         
-                    # Final fallback for retailer name
-                    if top_retailer == "Not found" and top_logo_source != "Not found":
-                        top_retailer = top_logo_source
-                        
                     results.append({
                         'sno': current_sno,
-                        'retailer': top_retailer, 
+                        'retailer': final_retailer_name, 
                         'status': final_status,
-                        # Join the findings list into a single string
                         'findings': " | ".join(findings) 
                     })
                     
@@ -197,8 +218,7 @@ if uploaded_file and api_key:
             
             results_df = pd.DataFrame(results)
             
-            # Merge results back into the original DataFrame (using 'sno' which is unique)
-            # This ensures we keep the original 'description' and any other columns
+            # Merge results back into the original DataFrame (using 'sno')
             df_final = df.merge(results_df, on='sno', how='left')
 
             # FINAL STEP: Select and reorder columns as requested
