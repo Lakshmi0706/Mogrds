@@ -28,4 +28,10 @@ def search_google(description, api_key):
             return []
         return [result['link'] for result in data.get("organic_results", [])]
     except requests.exceptions.RequestException as e:
-        st
+        st.error(f"Connection error: {e}")
+        return []
+
+# -------------------------------
+# Extract retailer domains
+# -------------------------------
+def get_retailer_domains
