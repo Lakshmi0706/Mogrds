@@ -83,9 +83,6 @@ except:
 # If no secret found, show input field
 if not api_key:
     api_key = st.text_input("Enter your SerpAPI API Key", type="password")
-    if not api_key:
-        st.info("Please enter your SerpAPI key to proceed")
-        st.stop()
 
 # File uploader
 st.write("Upload CSV file with 'description' column")
@@ -95,7 +92,7 @@ uploaded_file = st.file_uploader(
     help="Limit 200MB per file • CSV"
 )
 
-if uploaded_file:
+if uploaded_file and api_key:
     try:
         df = pd.read_csv(uploaded_file)
         
@@ -163,4 +160,7 @@ if uploaded_file:
         st.error(f"Error: {e}")
 
 else:
-    st.info("Please upload a CSV file to proceed")
+    if not uploaded_file:
+        st.info("Please upload a CSV file to proceed")
+    elif not api_key:
+        st.warning("Please enter your SerpAPI key above to start analysis")
