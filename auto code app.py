@@ -28,22 +28,4 @@ def search_google(description, api_key):
             return []
         return [result['link'] for result in data.get("organic_results", [])]
     except requests.exceptions.RequestException as e:
-        st.error(f"Connection error: {e}")
-        return []
-
-# -------------------------------
-# Extract retailer domains
-# -------------------------------
-def get_retailer_domains(links):
-    skip_these = [
-        "amazon", "ebay", "walmart", "wikipedia", "youtube", 
-        "facebook", "pinterest", "twitter", "instagram", 
-        "reddit", "quora", "yelp", "google", "mapquest", "doordash",
-        "linkedin", "tripadvisor", "target", "bestbuy"
-    ]
-    domains = []
-    for link in links:
-        domain = urlparse(link).netloc.replace("www.", "")
-        if domain and not any(skip in domain.lower() for skip in skip_these):
-            if any(keyword in domain.lower() for keyword in ["shop", "store", "mart", "buy", "outlet"]):
-               
+        st
