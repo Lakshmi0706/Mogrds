@@ -10,7 +10,6 @@ import random
 # Search Google using SerpAPI
 # -------------------------------
 def search_google(description, api_key):
-    # More specific query for better results
     query = f"buy {description} online site USA"
     params = {
         "q": query,
@@ -46,7 +45,5 @@ def get_retailer_domains(links):
     for link in links:
         domain = urlparse(link).netloc.replace("www.", "")
         if domain and not any(skip in domain.lower() for skip in skip_these):
-            # Check if domain looks like a retailer
             if any(keyword in domain.lower() for keyword in ["shop", "store", "mart", "buy", "outlet"]):
-                domains.append(domain)
-    return domains
+               
