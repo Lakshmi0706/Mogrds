@@ -73,8 +73,12 @@ st.set_page_config(page_title="Retailer Domain Validator", page_icon="🛒", lay
 
 st.title("Retailer Domain Validator")
 
-# API Key input
-api_key = st.text_input("Enter your SerpAPI API Key", type="password")
+# Get API key from Streamlit secrets
+try:
+    api_key = st.secrets["SERPAPI_KEY"]
+except:
+    st.error("API key not configured. Please contact the administrator.")
+    st.stop()
 
 # File uploader
 st.write("Upload CSV file with 'description' column")
@@ -84,7 +88,7 @@ uploaded_file = st.file_uploader(
     help="Limit 200MB per file • CSV"
 )
 
-if uploaded_file and api_key:
+if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file)
         
@@ -152,7 +156,4 @@ if uploaded_file and api_key:
         st.error(f"Error: {e}")
 
 else:
-    if not uploaded_file:
-        st.info("Please upload a CSV file to proceed")
-    if not api_key:
-        st.info("Please enter your SerpAPI key to proceed")
+    st.info("Please upload a CSV file to proceed")
