@@ -73,12 +73,19 @@ st.set_page_config(page_title="Retailer Domain Validator", page_icon="🛒", lay
 
 st.title("Retailer Domain Validator")
 
-# Get API key from Streamlit secrets
+# Get API key from Streamlit secrets or allow manual input as fallback
+api_key = None
 try:
-    api_key = st.secrets["SERPAPI_KEY"]
+    api_key = st.secrets.get("SERPAPI_KEY", None)
 except:
-    st.error("API key not configured. Please contact the administrator.")
-    st.stop()
+    pass
+
+# If no secret found, show input field
+if not api_key:
+    api_key = st.text_input("Enter your SerpAPI API Key", type="password")
+    if not api_key:
+        st.info("Please enter your SerpAPI key to proceed")
+        st.stop()
 
 # File uploader
 st.write("Upload CSV file with 'description' column")
