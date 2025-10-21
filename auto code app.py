@@ -69,34 +69,19 @@ def find_top_retailer(domains):
     return most_common_retailer, is_unique
 
 # Page setup
-st.set_page_config(page_title="Retailer Finder", page_icon="🛒", layout="wide")
+st.set_page_config(page_title="Retailer Domain Validator", page_icon="🛒", layout="centered")
 
-st.title("🛒 Find Unique Retailers for Your Products")
-st.write("Upload your product list and I'll help you find which retailers sell them exclusively in the USA")
+st.title("Retailer Domain Validator")
 
-# Sidebar for settings
-with st.sidebar:
-    st.header("⚙️ Settings")
-    api_key = st.text_input("Your SerpAPI Key", type="password")
-    st.caption("Don't have one? Get it free at [serpapi.com](https://serpapi.com)")
-    
-    st.divider()
-    
-    st.markdown("""
-    ### How it works
-    - Upload a CSV with product descriptions
-    - I'll search for each product
-    - Find which retailers sell them
-    - Tell you if there's a unique/exclusive retailer
-    
-    *Free tier:* 100 searches per month
-    """)
+# API Key input
+api_key = st.text_input("Enter your SerpAPI API Key", type="password")
 
-# Main content area
+# File uploader
+st.write("Upload CSV file with 'description' column")
 uploaded_file = st.file_uploader(
-    "Drop your CSV file here", 
+    "Drag and drop file here", 
     type=["csv"],
-    help="Make sure your file has a column named 'description'"
+    help="Limit 200MB per file • CSV"
 )
 
 if uploaded_file and api_key:
@@ -104,21 +89,14 @@ if uploaded_file and api_key:
         df = pd.read_csv(uploaded_file)
         
         if 'description' not in df.columns:
-            st.error("🚫 I need a 'description' column in your CSV file!")
+            st.error("CSV must contain a 'description' column!")
             st.stop()
         
         # Show preview
-        st.success(f"Great! I found {len(df)} products to check")
+        st.success(f"Found {len(df)} products to analyze")
         
-        with st.expander("👀 Preview your data"):
-            st.dataframe(df.head(), use_container_width=True)
-        
-        # Warning about API usage
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.info(f"This will use around {len(df)} of your monthly API searches")
-        with col2:
-            start_btn = st.button("🚀 Let's Go!", type="primary", use_container_width=True)
+        # Start button
+        start_btn = st.button("Start Analysis", type="primary", use_container_width=True)
         
         if start_btn:
             retailers = []
@@ -129,7 +107,7 @@ if uploaded_file and api_key:
             
             for idx, description in enumerate(df['description'], 1):
                 # Show what we're working on
-                status_msg.info(f"🔍 Searching for: *{description[:60]}{'...' if len(description) > 60 else ''}*")
+                status_msg.text(f"Processing {idx}/{len(df)}: {description[:50]}...")
                 
                 # Do the search
                 search_results = search_google(description, api_key)
@@ -146,60 +124,35 @@ if uploaded_file and api_key:
                 if idx < len(df):
                     time.sleep(random.uniform(1.0, 2.0))
             
-            status_msg.success("✅ All done! Here are your results:")
+            status_msg.success("Processing complete!")
             
             # Build results
-            df['Retailer'] = retailers
-            df['Exclusive?'] = statuses
+            df['retailer'] = retailers
+            df['status'] = statuses
             
-            # Show results with nice formatting
-            st.dataframe(
-                df.style.map(
-                    lambda x: 'background-color: #d4edda' if x == 'Yes' else '', 
-                    subset=['Exclusive?']
-                ),
-                use_container_width=True
-            )
+            # Show results
+            st.subheader("Results")
+            st.dataframe(df, use_container_width=True)
             
             # Stats
             unique_products = sum(1 for s in statuses if s == "Yes")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Total Products", len(df))
-            with col2:
-                st.metric("Exclusive Retailers", unique_products)
-            with col3:
-                st.metric("Multiple Retailers", len(df) - unique_products)
+            st.metric("Unique Retailers Found", f"{unique_products}/{len(df)}")
             
             # Download
-            st.divider()
             csv_data = df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                "📥 Download Results as CSV",
+                "Download Results",
                 csv_data,
-                "retailer_analysis.csv",
+                "retailer_results.csv",
                 "text/csv",
                 use_container_width=True
             )
     
     except Exception as e:
-        st.error(f"Something went wrong: {e}")
+        st.error(f"Error: {e}")
 
-elif not uploaded_file:
-    st.info("👆 Upload a CSV file to get started")
-    
-    # Sample data format
-    with st.expander("📋 What should my CSV look like?"):
-        sample_df = pd.DataFrame({
-            'description': [
-                'Sony WH-1000XM5 wireless headphones',
-                'Nike Air Max 90 sneakers',
-                'KitchenAid stand mixer'
-            ]
-        })
-        st.dataframe(sample_df, use_container_width=True)
-        st.caption("Just have a 'description' column with your product names")
-
-elif not api_key:
-    st.warning("⚠️ Don't forget to add your SerpAPI key in the sidebar!")
+else:
+    if not uploaded_file:
+        st.info("Please upload a CSV file to proceed")
+    if not api_key:
+        st.info("Please enter your SerpAPI key to proceed")
