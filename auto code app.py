@@ -7,7 +7,8 @@ import time
 import random
 import re # Import regex for advanced cleaning
 
-# --- NEW UTILITY FUNCTION ---
+# --- UTILITY FUNCTIONS ---
+
 def clean_domain_to_name(domain):
     """Converts a domain (e.g., 'dollartree.com') into a retailer name (e.g., 'Dollar Tree')."""
     if domain == "Not found":
@@ -23,9 +24,6 @@ def clean_domain_to_name(domain):
     name = name.title()
     
     return name.strip()
-
-
-# --- SEARCH AND UTILITY FUNCTIONS (UNMODIFIED) ---
 
 def search_google_web(description, api_key):
     """
@@ -67,6 +65,7 @@ def search_google_images(description, api_key):
     except requests.exceptions.RequestException:
         return [], None
 
+# MODIFIED FUNCTION: Enhanced cleaning logic to prevent "Https:" from being returned as a domain.
 def get_clean_domains(links_or_sources):
     """Extract and clean domains, filtering out a comprehensive list of non-retail sites."""
     domains = []
@@ -82,10 +81,12 @@ def get_clean_domains(links_or_sources):
     ]
     for link in links_or_sources:
         try:
+            # Enforce a scheme (http://) for robust parsing
             parsed = urlparse(f"http://{link}")
             domain = parsed.netloc.replace("www.", "")
             
-            if domain and domain != "http:" and not any(skip in domain.lower() for skip in skip_these):
+            # CRITICAL FIX: Ensure the domain is not empty AND does not start with a protocol or common noise.
+            if domain and not domain.startswith('http') and not any(skip in domain.lower() for skip in skip_these):
                 domains.append(domain)
         except Exception:
             continue
@@ -191,8 +192,13 @@ if uploaded_file and api_key:
                         final_retailer_domain = top_logo_domain
                         
                     # CRITICAL: Convert the final domain to a human-readable name
-                    final_retailer_name = clean_domain_to_name(final_retailer_domain)
-
+                    # If status is NO, the retailer name should be "Not found"
+                    if final_status == "Yes" and final_retailer_domain != "Not found":
+                         final_retailer_name = clean_domain_to_name(final_retailer_domain)
+                    else:
+                         final_retailer_name = "Not found"
+                        
+                    # Update findings with the clean name
                     if final_status == "Yes":
                         if web_status == "Yes" and image_status == "Yes":
                             findings.append(f"Unique presence confirmed by both Website and Logo for '{final_retailer_name}'.")
