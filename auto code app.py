@@ -1,24 +1,4 @@
-[8:07 AM, 10/22/2025] Sai Lakshmi✨: import streamlit as st
-import pandas as pd
-from urllib.parse import urlparse
-import requests
-from collections import Counter
-import time
-import random
-import re # Import regex for advanced cleaning
-
-# --- UTILITY FUNCTIONS ---
-
-def clean_domain_to_name(domain):
-    """Converts a domain (e.g., 'dollartree.com') into a clean, human-readable retailer name (e.g., 'Dollar Tree')."""
-    if domain == "Not found":
-        return domain
-    
-    # List of common generic/junk words that should be removed if they appear as standalone parts
-    # Expanded list to filter out common noise seen in search results
-    junk_words = ["logopedia", "logos", "vector", "mock", "current", "publishing", "food", "frys", 
-                  "alamy", "willow", "andnowuknow", "inc", "lt…
-[8:33 AM, 10/22/2025] Sai Lakshmi✨: import streamlit as st
+import streamlit as st
 import pandas as pd
 from urllib.parse import urlparse
 from collections import Counter
