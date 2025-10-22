@@ -14,16 +14,33 @@ def clean_domain_to_name(domain):
     if domain == "Not found":
         return domain
     
-    # 1. Remove common TLDs (top-level domains) using regex
-    name = re.sub(r'\.(com|net|org|co|us|biz|info|io|ai|shop|store|app)$', '', domain, flags=re.IGNORECASE)
+    # List of common generic/junk words that should be removed if they appear as standalone parts
+    # Added "alamy" and "willow" based on your previous screenshot feedback.
+    junk_words = ["logopedia", "logos", "vector", "mock", "current", "publishing", "food", "frys", "alamy", "willow"]
     
-    # 2. Replace hyphens and dots with spaces
+    # 1. Remove common TLDs (top-level domains)
+    name = re.sub(r'\.(com|net|org|co|us|biz|info|io|ai|shop|store|app|inc|ltd)$', '', domain, flags=re.IGNORECASE)
+    
+    # 2. Replace common separators with space
     name = name.replace('-', ' ').replace('.', ' ')
     
     # 3. Capitalize words (Title Case)
-    name = name.title()
+    name_parts = [part.title() for part in name.split()]
     
-    return name.strip()
+    # 4. Filter out any remaining junk words from the final name
+    final_name_parts = [part for part in name_parts if part.lower() not in junk_words]
+    
+    final_name = " ".join(final_name_parts)
+    
+    # Fallback to the title-cased name if filtering was too aggressive but still produced a result
+    if not final_name and name.strip():
+        return name.title().strip()
+    
+    # If still empty, return original domain for debugging, or default
+    if not final_name:
+        return "Not found"
+    
+    return final_name.strip()
 
 def search_google_web(description, api_key):
     """
@@ -65,10 +82,10 @@ def search_google_images(description, api_key):
     except requests.exceptions.RequestException:
         return [], None
 
-# MODIFIED FUNCTION: Enhanced cleaning logic to prevent "Https:" from being returned as a domain.
 def get_clean_domains(links_or_sources):
     """Extract and clean domains, filtering out a comprehensive list of non-retail sites."""
     domains = []
+    # Expanded list of domain segments to skip
     skip_these = [
         "amazon", "ebay", "walmart", "target", "costco", "etsy", "facebook", "instagram", 
         "twitter", "pinterest", "linkedin", "youtube", "reddit", "tiktok", "quora", "wikipedia", 
@@ -77,16 +94,20 @@ def get_clean_domains(links_or_sources):
         "doordash", "grubhub", "postmates", "ubereats", "istockphoto", "shutterstock", 
         "freepik", "vecteezy", "gettyimages", "adobestock", "google", "apple", "microsoft", 
         "dollartree", "familydollar", "dollarstore", "biglots", "business", "news", 
-        "reviews", "top10", "coupons"
+        "reviews", "top10", "coupons", "vectorstock", "logobrand", "logobucket", "logos", 
+        "alamy", "willowtree", "andnowuknow", "currentpublishing", "wincofoods", "sunoco" # Added based on results feedback
     ]
     for link in links_or_sources:
         try:
-            # Enforce a scheme (http://) for robust parsing
+            # Add scheme for robustness
             parsed = urlparse(f"http://{link}")
             domain = parsed.netloc.replace("www.", "")
             
-            # CRITICAL FIX: Ensure the domain is not empty AND does not start with a protocol or common noise.
-            if domain and not domain.startswith('http') and not any(skip in domain.lower() for skip in skip_these):
+            # Filter: must not be empty, must not start with protocol/noise, and must not contain skip words
+            # The domain must contain at least one dot to be a real domain (e.g., 'example.com')
+            if (domain and '.' in domain and 
+                not domain.startswith('http') and 
+                not any(skip in domain.lower() for skip in skip_these)):
                 domains.append(domain)
         except Exception:
             continue
@@ -105,6 +126,7 @@ def analyze_domain_uniqueness(domains):
     
     is_dominant = "No"
     if top_count > 1:
+        # A domain must appear more than once AND be strictly more frequent than the second common domain 
         if len(most_common_list) == 1 or top_count > most_common_list[1][1]:
             is_dominant = "Yes"
             
@@ -115,7 +137,7 @@ def analyze_domain_uniqueness(domains):
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Retailer names are now displayed in a clean, human-readable format.")
+st.caption("Retailer names are now displayed in a clean, human-readable format, filtered for junk results.")
 
 api_key = st.secrets.get("SERPAPI_KEY") if hasattr(st, 'secrets') else None
 if not api_key:
@@ -191,11 +213,11 @@ if uploaded_file and api_key:
                     if final_retailer_domain == "Not found" and top_logo_domain != "Not found":
                         final_retailer_domain = top_logo_domain
                         
-                    # CRITICAL: Convert the final domain to a human-readable name
-                    # If status is NO, the retailer name should be "Not found"
+                    # CRITICAL: Convert the final domain to a human-readable name ONLY if status is Yes and a domain was found
                     if final_status == "Yes" and final_retailer_domain != "Not found":
                          final_retailer_name = clean_domain_to_name(final_retailer_domain)
                     else:
+                         # If status is NO, or domain is Not found, retailer name should be Not found
                          final_retailer_name = "Not found"
                         
                     # Update findings with the clean name
