@@ -6,27 +6,6 @@ from collections import Counter
 import time
 import random
 
-def search_google_web(description, api_key):
-    """Search Google Web for the official retailer website."""
-    query = f'"{description}" official website USA'
-    params = {"q": query, "engine": "google", "gl": "us", "hl": "en", "api_key": api_key, "num": 10}
-    try:
-        response = requests.get("https://serpapi.com/search", params=params, timeout=20)
-        response.raise_for_status()
-        data = response.json()
-        if "error" in data:
-            st.warning(f"Web search error for '{description}': {data['error']}")
-            return []
-        return [result['link'] for result in data.get("orga…
-[11:34 PM, 10/21/2025] Sai Lakshmi✨: 5
-[11:38 PM, 10/21/2025] Sai Lakshmi✨: import streamlit as st
-import pandas as pd
-from urllib.parse import urlparse
-import requests
-from collections import Counter
-import time
-import random
-
 # MODIFIED FUNCTION: Now returns the search results AND any corrected query from Google.
 def search_google_web(description, api_key):
     """
