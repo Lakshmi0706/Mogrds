@@ -2,18 +2,21 @@ import streamlit as st
 import pandas as pd
 from urllib.parse import urlparse
 from collections import Counter
-import difflib  # Built-in for fuzzy matching
+import difflib  # For Levenshtein-like similarity
 import time
 import random
-import re  # For cleaning descriptions
+import re  # For cleaning
+try:
+    import jellyfish  # For Jaro-Winkler (optional)
+except ImportError:
+    jellyfish = None  # Fallback if not installed
 
-# Comprehensive seed dataset: Includes your brands + corrections/typos
+# Comprehensive seed dataset
 BRAND_SEED = {
-    # Your specific brands with corrections
     "CASH CHECK WISE INCREDIBLY FRIENDLY": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
     "CASH WISE": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
     "MURPHY EXPRESS": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
-    "SON'S CLUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},  # Assuming Sam's Club
+    "SON'S CLUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},
     "RACETROC": {"retailer": "racetrac.com", "logo_source": "https://www.racetrac.com/logo.svg"},
     "RACETRAC": {"retailer": "racetrac.com", "logo_source": "https://www.racetrac.com/logo.svg"},
     "BATH & BODYWORKS": {"retailer": "bathandbodyworks.com", "logo_source": "https://www.bathandbodyworks.com/logo.png"},
@@ -26,11 +29,11 @@ BRAND_SEED = {
     "FRED MEYER": {"retailer": "fredmeyer.com", "logo_source": "https://www.fredmeyer.com/logo.jpg"},
     "THD HD POT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
     "THE HOME DEPOT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
-    "CRAN HY SUCCO": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},  # Assuming Hy-Vee variant
+    "CRAN HY SUCCO": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},
     "HY VEE": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},
     "WINCY FOODS": {"retailer": "wincofoods.com", "logo_source": "https://www.wincofoods.com/logo.svg"},
     "WINCO FOODS": {"retailer": "wincofoods.com", "logo_source": "https://www.wincofoods.com/logo.svg"},
-    "SIN CLAIRE": {"retailer": "stclair.com", "logo_source": "https://www.stclair.com/logo.png"},  # Assuming St. Clair Foods
+    "SIN CLAIRE": {"retailer": "stclair.com", "logo_source": "https://www.stclair.com/logo.png"},
     "ST CLAIR": {"retailer": "stclair.com", "logo_source": "https://www.stclair.com/logo.png"},
     "HOMDA POT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
     "THE HOMDEPOT VE": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
@@ -47,27 +50,29 @@ BRAND_SEED = {
     "PRICE CHOPPER": {"retailer": "pricechopper.com", "logo_source": "https://www.pricechopper.com/logo.png"},
     "DULLAR REE": {"retailer": "dollartree.com", "logo_source": "https://www.dollartree.com/sites/g/files/qyckzh1461/files/media/images/logo/dollartree-logo.png"},
     "DOLLAR TREE": {"retailer": "dollartree.com", "logo_source": "https://www.dollartree.com/sites/g/files/qyckzh1461/files/media/images/logo/dollartree-logo.png"},
-    
-    # Additional common US retailers for broader coverage
     "TARGET": {"retailer": "target.com", "logo_source": "https://www.target.com/logo.svg"},
     "WALMART": {"retailer": "walmart.com", "logo_source": "https://www.walmart.com/logo.svg"},
-    "KROGER": {"retailer": "kroger.com", "logo_source": "https://www.kroger.com/logo.png"},
-    "TRADER JOES": {"retailer": "traderjoes.com", "logo_source": "https://www.traderjoes.com/logo.jpg"},
-    "WHOLE FOODS": {"retailer": "wholefoodsmarket.com", "logo_source": "https://www.wholefoodsmarket.com/logo.svg"},
-    "PUB LIX": {"retailer": "publix.com", "logo_source": "https://www.publix.com/logo.png"},
-    "LOWES": {"retailer": "lowes.com", "logo_source": "https://www.lowes.com/logo.svg"},
-    "CVS": {"retailer": "cvs.com", "logo_source": "https://www.cvs.com/logo.svg"},
-    "WALGREENS": {"retailer": "walgreens.com", "logo_source": "https://www.walgreens.com/logo.png"},
-    "MACYS": {"retailer": "macys.com", "logo_source": "https://www.macys.com/logo.svg"},
 }
 
-# Function to clean and extract keywords from description
+# Advanced cleaning with token weighting
 def clean_description(description):
     cleaned = re.sub(r'\d+', '', description.upper().strip())  # Remove numbers
     cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG)\s+', ' ', cleaned)
-    return ' '.join(cleaned.split())  # Normalize spaces
+    tokens = cleaned.split()
+    if len(tokens) > 3:
+        return ' '.join(tokens[:3])  # Focus on top 3 tokens
+    return cleaned
 
-# Function to dynamically match description to seed using fuzzy logic
+# N-Gram generator for partial matching
+def get_ngrams(text, n=2):
+    words = text.split()
+    ngrams = set()
+    for i in range(len(words)):
+        for j in range(i + 1, min(i + n + 1, len(words) + 1)):
+            ngrams.add(' '.join(words[i:j]))
+    return ngrams
+
+# Advanced fuzzy matching function
 def find_brand_match(description):
     orig_desc = description.upper().strip()
     cleaned_desc = clean_description(description)
@@ -76,17 +81,37 @@ def find_brand_match(description):
     if orig_desc in BRAND_SEED:
         return BRAND_SEED[orig_desc]
     
-    # Fuzzy match on original
-    matches = difflib.get_close_matches(orig_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.6)  # 60% threshold
-    if matches:
-        return BRAND_SEED[matches[0]]
+    best_match = {"retailer": "Not found", "logo_source": None}
+    max_score = 0
     
-    # Fallback: Fuzzy on cleaned description
-    matches = difflib.get_close_matches(cleaned_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.6)
-    if matches:
-        return BRAND_SEED[matches[0]]
+    for seed_key in BRAND_SEED.keys():
+        # Levenshtein Distance (via difflib SequenceMatcher)
+        lev_score = difflib.SequenceMatcher(None, orig_desc, seed_key).ratio() * 100
+        # Jaro-Winkler (if jellyfish available)
+        jw_score = jellyfish.jaro_winkler(orig_desc, seed_key) * 100 if jellyfish else 0
+        # N-Gram overlap
+        orig_ngrams = get_ngrams(orig_desc)
+        seed_ngrams = get_ngrams(seed_key)
+        ng_score = (len(orig_ngrams & seed_ngrams) / len(orig_ngrams | seed_ngrams)) * 100 if orig_ngrams else 0
+        
+        # Hybrid score: Weighted average (50% Lev, 30% JW, 20% NG)
+        score = (0.5 * lev_score) + (0.3 * jw_score if jellyfish else 0) + (0.2 * ng_score)
+        if score > max_score and score >= 60:  # Adjustable threshold
+            max_score = score
+            best_match = BRAND_SEED[seed_key]
     
-    return {"retailer": "Not found", "logo_source": None}
+    # Fallback with cleaned description
+    if max_score < 60 and cleaned_desc != orig_desc:
+        for seed_key in BRAND_SEED.keys():
+            lev_score = difflib.SequenceMatcher(None, cleaned_desc, seed_key).ratio() * 100
+            jw_score = jellyfish.jaro_winkler(cleaned_desc, seed_key) * 100 if jellyfish else 0
+            ng_score = (len(get_ngrams(cleaned_desc) & get_ngrams(seed_key)) / len(get_ngrams(cleaned_desc) | get_ngrams(seed_key))) * 100 if get_ngrams(cleaned_desc) else 0
+            score = (0.5 * lev_score) + (0.3 * jw_score if jellyfish else 0) + (0.2 * ng_score)
+            if score > max_score and score >= 60:
+                max_score = score
+                best_match = BRAND_SEED[seed_key]
+    
+    return best_match
 
 def get_domain(url):
     if url == "Not found" or not url:
@@ -97,13 +122,10 @@ def get_domain(url):
         return None
 
 def get_clean_domains(links_or_sources):
-    """Extract and clean domains, filtering out non-retail sites."""
     domains = []
-    skip_these = [
-        "facebook", "instagram", "twitter", "linkedin", "youtube", "reddit", "tiktok",
-        "wikipedia", "forbes", "bloomberg", "cnn", "wsj", "nytimes", "yelp",
-        "tripadvisor", "mapquest", "google", "apple", "microsoft"
-    ]
+    skip_these = ["facebook", "instagram", "twitter", "linkedin", "youtube", "reddit", "tiktok",
+                  "wikipedia", "forbes", "bloomberg", "cnn", "wsj", "nytimes", "yelp",
+                  "tripadvisor", "mapquest", "google", "apple", "microsoft"]
     for link in links_or_sources:
         domain = get_domain(link)
         if domain and not any(skip in domain.lower() for skip in skip_these):
@@ -111,25 +133,19 @@ def get_clean_domains(links_or_sources):
     return domains
 
 def analyze_domain_uniqueness(domains):
-    """Determines the top domain and if it's a unique, clear winner with relaxed criteria."""
     if not domains:
         return "Not found", "No"
-    
     domain_counts = Counter(domains)
     most_common_list = domain_counts.most_common(2)
     top_domain, top_count = most_common_list[0]
-    
-    is_dominant = "No"
-    if top_count > 0:  # Relaxed condition to accept any domain with at least one occurrence
-        is_dominant = "Yes" if len(most_common_list) == 1 or top_count > most_common_list[1][1] else "Yes"
+    is_dominant = "Yes" if top_count > 0 and (len(most_common_list) == 1 or top_count > most_common_list[1][1]) else "No"
     return top_domain, is_dominant
 
 # --- Streamlit App UI ---
-
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Validates brand presence using fuzzy matching on a seed dataset (no API required).")
+st.caption("Uses advanced fuzzy matching on a seed dataset (no API required).")
 
 st.header("1. Upload Your File")
 uploaded_file = st.file_uploader("Your CSV must have a 'description' column.", type=["csv"])
@@ -157,8 +173,7 @@ if uploaded_file:
                     description = str(row['description'])
                     status_text.text(f"Processing {idx + 1}/{total}: {description[:50]}...")
                     
-                    # --- TWO-PASS LOGIC ---
-                    # PASS 1: Direct fuzzy match
+                    # Two-pass logic
                     brand_info = find_brand_match(description)
                     web_domains = get_clean_domains([brand_info["retailer"]]) if brand_info["retailer"] != "Not found" else []
                     top_retailer, web_status = analyze_domain_uniqueness(web_domains)
@@ -168,7 +183,6 @@ if uploaded_file:
 
                     final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
                     
-                    # PASS 2: If failed, clean and re-match (simulates correction)
                     if final_status == "No":
                         cleaned_desc = clean_description(description)
                         if cleaned_desc != description.upper().strip():
@@ -180,10 +194,8 @@ if uploaded_file:
 
                             logo_domains = get_clean_domains([brand_info["logo_source"]]) if brand_info["logo_source"] else []
                             top_logo_source, image_status = analyze_domain_uniqueness(logo_domains)
-                            
                             final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
                     
-                    # Final fallback
                     if top_retailer == "Not found" and top_logo_source != "Not found":
                         top_retailer = top_logo_source
                         
@@ -200,7 +212,7 @@ if uploaded_file:
             df['status'] = results_df['status']
             
             st.header("3. Results")
-            st.markdown("status is 'Yes' if a unique website or logo was found (fuzzy-corrected from dataset).")
+            st.markdown("status is 'Yes' if a unique website or logo was found (advanced fuzzy matching applied).")
             st.dataframe(df, use_container_width=True)
             
             dominant_count = (df['status'] == 'Yes').sum()
