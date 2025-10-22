@@ -80,6 +80,8 @@ BRAND_SEED = {
 
 def find_brand_match(description):
     description_upper = description.upper().strip()
+    if len(description_upper.split()) < 2:  # Require at least 2 words
+        return {"retailer": "Not found", "logo_source": None}
     if description_upper in BRAND_SEED:
         return BRAND_SEED[description_upper]
     return {"retailer": "Not found", "logo_source": None}
@@ -116,7 +118,7 @@ def analyze_domain_uniqueness(domains):
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Validates brand presence using exact matching on a seed dataset.")
+st.caption("Validates brand presence using exact matching with minimum length requirement.")
 
 st.header("1. Upload Your File")
 uploaded_file = st.file_uploader("Your CSV must have a 'description' column.", type=["csv"])
@@ -169,7 +171,7 @@ if uploaded_file:
             df['status'] = results_df['status']
             
             st.header("3. Results")
-            st.markdown("status is 'Yes' if a unique website or logo was found (exact match only).")
+            st.markdown("status is 'Yes' only for exact matches with at least 2 words.")
             st.dataframe(df, use_container_width=True)
             
             dominant_count = (df['status'] == 'Yes').sum()
