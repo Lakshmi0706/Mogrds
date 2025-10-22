@@ -10,13 +10,15 @@ import re # Import regex for advanced cleaning
 # --- UTILITY FUNCTIONS ---
 
 def clean_domain_to_name(domain):
-    """Converts a domain (e.g., 'dollartree.com') into a retailer name (e.g., 'Dollar Tree')."""
+    """Converts a domain (e.g., 'dollartree.com') into a clean, human-readable retailer name (e.g., 'Dollar Tree')."""
     if domain == "Not found":
         return domain
     
     # List of common generic/junk words that should be removed if they appear as standalone parts
-    # Added "alamy" and "willow" based on your previous screenshot feedback.
-    junk_words = ["logopedia", "logos", "vector", "mock", "current", "publishing", "food", "frys", "alamy", "willow"]
+    # Expanded list to filter out common noise seen in search results
+    junk_words = ["logopedia", "logos", "vector", "mock", "current", "publishing", "food", "frys", 
+                  "alamy", "willow", "andnowuknow", "inc", "ltd", "corp", "co", "brand", "official",
+                  "store", "shop"]
     
     # 1. Remove common TLDs (top-level domains)
     name = re.sub(r'\.(com|net|org|co|us|biz|info|io|ai|shop|store|app|inc|ltd)$', '', domain, flags=re.IGNORECASE)
@@ -28,15 +30,16 @@ def clean_domain_to_name(domain):
     name_parts = [part.title() for part in name.split()]
     
     # 4. Filter out any remaining junk words from the final name
-    final_name_parts = [part for part in name_parts if part.lower() not in junk_words]
+    final_name_parts = [part for part in name_parts if part.lower() not in junk_words and len(part) > 1] # Ensure parts are at least 2 chars long
     
     final_name = " ".join(final_name_parts)
     
     # Fallback to the title-cased name if filtering was too aggressive but still produced a result
     if not final_name and name.strip():
-        return name.title().strip()
+        # Clean up any residual junk parts before returning
+        return " ".join([part.title() for part in name.split() if part.lower() not in junk_words]).strip()
     
-    # If still empty, return original domain for debugging, or default
+    # If still empty, return original "Not found"
     if not final_name:
         return "Not found"
     
@@ -83,7 +86,7 @@ def search_google_images(description, api_key):
         return [], None
 
 def get_clean_domains(links_or_sources):
-    """Extract and clean domains, filtering out a comprehensive list of non-retail sites."""
+    """Extract and clean domains, filtering out non-retail sites."""
     domains = []
     # Expanded list of domain segments to skip
     skip_these = [
@@ -95,16 +98,16 @@ def get_clean_domains(links_or_sources):
         "freepik", "vecteezy", "gettyimages", "adobestock", "google", "apple", "microsoft", 
         "dollartree", "familydollar", "dollarstore", "biglots", "business", "news", 
         "reviews", "top10", "coupons", "vectorstock", "logobrand", "logobucket", "logos", 
-        "alamy", "willowtree", "andnowuknow", "currentpublishing", "wincofoods", "sunoco" # Added based on results feedback
+        "alamy", "willowtree", "andnowuknow", "currentpublishing", "wincofoods", "sunoco" 
     ]
     for link in links_or_sources:
         try:
-            # Add scheme for robustness
+            # Enforce scheme for robust parsing and cleaning
             parsed = urlparse(f"http://{link}")
             domain = parsed.netloc.replace("www.", "")
             
-            # Filter: must not be empty, must not start with protocol/noise, and must not contain skip words
-            # The domain must contain at least one dot to be a real domain (e.g., 'example.com')
+            # Filter: must not be empty, must contain a dot (like example.com), 
+            # and must not contain skip words.
             if (domain and '.' in domain and 
                 not domain.startswith('http') and 
                 not any(skip in domain.lower() for skip in skip_these)):
@@ -137,7 +140,7 @@ def analyze_domain_uniqueness(domains):
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Retailer names are now displayed in a clean, human-readable format, filtered for junk results.")
+st.caption("Retailer names are displayed as the site name, cleaned for readability, when a match is found.")
 
 api_key = st.secrets.get("SERPAPI_KEY") if hasattr(st, 'secrets') else None
 if not api_key:
@@ -213,15 +216,16 @@ if uploaded_file and api_key:
                     if final_retailer_domain == "Not found" and top_logo_domain != "Not found":
                         final_retailer_domain = top_logo_domain
                         
-                    # CRITICAL: Convert the final domain to a human-readable name ONLY if status is Yes and a domain was found
+                    # CRITICAL: Convert the final domain to a human-readable name ONLY if status is Yes
                     if final_status == "Yes" and final_retailer_domain != "Not found":
                          final_retailer_name = clean_domain_to_name(final_retailer_domain)
                     else:
-                         # If status is NO, or domain is Not found, retailer name should be Not found
+                         # If status is NO, or no valid domain was found, retailer name should be Not found
                          final_retailer_name = "Not found"
                         
                     # Update findings with the clean name
                     if final_status == "Yes":
+                        # Ensure the final retailer name is used in the findings
                         if web_status == "Yes" and image_status == "Yes":
                             findings.append(f"Unique presence confirmed by both Website and Logo for '{final_retailer_name}'.")
                         elif web_status == "Yes":
