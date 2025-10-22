@@ -11,12 +11,15 @@ try:
 except ImportError:
     jellyfish = None  # Fallback if not installed
 
-# Expanded seed dataset with more variants
+# Expanded seed dataset with typo/abbreviation variants
 BRAND_SEED = {
     "CASH CHECK WISE INCREDIBLY FRIENDLY": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
     "CASH WISE": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
     "MURPHY EXPRESS": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
     "SON'S CLUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},
+    "SON SCLUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},  # New variant
+    "SON S CLUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},  # New variant
+    "SAMS CLUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},  # Normalize
     "RACETROC": {"retailer": "racetrac.com", "logo_source": "https://www.racetrac.com/logo.svg"},
     "RACETRAC": {"retailer": "racetrac.com", "logo_source": "https://www.racetrac.com/logo.svg"},
     "BATH & BODYWORKS": {"retailer": "bathandbodyworks.com", "logo_source": "https://www.bathandbodyworks.com/logo.png"},
@@ -29,11 +32,11 @@ BRAND_SEED = {
     "FRED MEYER": {"retailer": "fredmeyer.com", "logo_source": "https://www.fredmeyer.com/logo.jpg"},
     "THD HD POT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
     "THE HOME DEPOT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
-    "CRAN HY SUCCO": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},  # Variant
+    "CRAN HY SUCCO": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},
     "HY VEE": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},
     "WINCY FOODS": {"retailer": "wincofoods.com", "logo_source": "https://www.wincofoods.com/logo.svg"},
     "WINCO FOODS": {"retailer": "wincofoods.com", "logo_source": "https://www.wincofoods.com/logo.svg"},
-    "SIN CLAIRE": {"retailer": "stclair.com", "logo_source": "https://www.stclair.com/logo.png"},  # Variant
+    "SIN CLAIRE": {"retailer": "stclair.com", "logo_source": "https://www.stclair.com/logo.png"},
     "ST CLAIR": {"retailer": "stclair.com", "logo_source": "https://www.stclair.com/logo.png"},
     "HOMDA POT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
     "THE HOMDEPOT VE": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
@@ -50,9 +53,10 @@ BRAND_SEED = {
     "PRICE CHOPPER": {"retailer": "pricechopper.com", "logo_source": "https://www.pricechopper.com/logo.png"},
     "DULLAR REE": {"retailer": "dollartree.com", "logo_source": "https://www.dollartree.com/sites/g/files/qyckzh1461/files/media/images/logo/dollartree-logo.png"},
     "DOLLAR TREE": {"retailer": "dollartree.com", "logo_source": "https://www.dollartree.com/sites/g/files/qyckzh1461/files/media/images/logo/dollartree-logo.png"},
+    "OLLAR TREE": {"retailer": "dollartree.com", "logo_source": "https://www.dollartree.com/sites/g/files/qyckzh1461/files/media/images/logo/dollartree-logo.png"},  # New variant
+    "OLLARCTREE": {"retailer": "dollartree.com", "logo_source": "https://www.dollartree.com/sites/g/files/qyckzh1461/files/media/images/logo/dollartree-logo.png"},  # New variant
     "TARGET": {"retailer": "target.com", "logo_source": "https://www.target.com/logo.svg"},
     "WALMART": {"retailer": "walmart.com", "logo_source": "https://www.walmart.com/logo.svg"},
-    # Additional variants for robustness
     "CRAN HY": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},
     "SUCCO": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},
     "WINCY": {"retailer": "wincofoods.com", "logo_source": "https://www.wincofoods.com/logo.svg"},
@@ -60,15 +64,15 @@ BRAND_SEED = {
     "HOMDEPOT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
 }
 
-# Enhanced cleaning with keyword extraction
+# Enhanced cleaning with better token preservation
 def clean_description(description):
     cleaned = re.sub(r'[\d\W]+', ' ', description.upper().strip())  # Remove numbers, special chars
-    cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG|THE)\s+', ' ', cleaned)
-    tokens = [t for t in cleaned.split() if t]  # Split and filter empty
-    return ' '.join(tokens[:3]) if len(tokens) > 3 else ' '.join(tokens)  # Top 3 keywords
+    cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG)\s+', ' ', cleaned)
+    tokens = [t for t in cleaned.split() if t and len(t) > 2]  # Keep tokens > 2 chars
+    return ' '.join(tokens[:3]) if tokens else cleaned  # Top 3 keywords or original if none
 
-# N-Gram generator
-def get_ngrams(text, n=2):
+# N-Gram generator with longer sequences
+def get_ngrams(text, n=3):
     words = text.split()
     ngrams = set()
     for i in range(len(words)):
@@ -94,17 +98,17 @@ def find_brand_match(description):
         seed_ngrams = get_ngrams(seed_key)
         ng_score = (len(orig_ngrams & seed_ngrams) / len(orig_ngrams | seed_ngrams)) * 100 if orig_ngrams else 0
         score = (0.5 * lev_score) + (0.3 * jw_score if jellyfish else 0) + (0.2 * ng_score)
-        if score > max_score and score >= 50:  # Lowered to 50%
+        if score > max_score and score >= 45:  # Lowered to 45%
             max_score = score
             best_match = BRAND_SEED[seed_key]
     
-    if max_score < 50 and cleaned_desc != orig_desc:
+    if max_score < 45 and cleaned_desc != orig_desc:
         for seed_key in BRAND_SEED.keys():
             lev_score = difflib.SequenceMatcher(None, cleaned_desc, seed_key).ratio() * 100
             jw_score = jellyfish.jaro_winkler(cleaned_desc, seed_key) * 100 if jellyfish else 0
             ng_score = (len(get_ngrams(cleaned_desc) & get_ngrams(seed_key)) / len(get_ngrams(cleaned_desc) | get_ngrams(seed_key))) * 100 if get_ngrams(cleaned_desc) else 0
             score = (0.5 * lev_score) + (0.3 * jw_score if jellyfish else 0) + (0.2 * ng_score)
-            if score > max_score and score >= 50:
+            if score > max_score and score >= 45:
                 max_score = score
                 best_match = BRAND_SEED[seed_key]
     
@@ -142,7 +146,7 @@ def analyze_domain_uniqueness(domains):
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Uses advanced fuzzy matching with debug (no API required).")
+st.caption("Uses advanced fuzzy matching with debug (threshold 45%).")
 
 st.header("1. Upload Your File")
 uploaded_file = st.file_uploader("Your CSV must have a 'description' column.", type=["csv"])
@@ -213,7 +217,7 @@ if uploaded_file:
             df['status'] = results_df['status']
             
             st.header("3. Results")
-            st.markdown("status is 'Yes' if a unique website or logo was found (threshold 50%). Check debug for scores.")
+            st.markdown("status is 'Yes' if a unique website or logo was found (threshold 45%). Check debug for scores.")
             st.dataframe(df, use_container_width=True)
             
             dominant_count = (df['status'] == 'Yes').sum()
