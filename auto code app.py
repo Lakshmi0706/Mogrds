@@ -245,4 +245,4 @@ if uploaded_file:
         st.error(f"An unexpected error occurred: {e}", icon="🔥")
 
 else:
-    st.info("Please upload a CSV file to get started."
+    st.info("Please upload a CSV file to get started.")
