@@ -1,4 +1,4 @@
-import streamlit as st
+[11:24 PM, 10/21/2025] Sai Lakshmi✨: import streamlit as st
 import pandas as pd
 from urllib.parse import urlparse
 import requests
@@ -6,12 +6,34 @@ from collections import Counter
 import time
 import random
 
-# --- SEARCH AND UTILITY FUNCTIONS (NO CHANGES) ---
+def search_google_web(description, api_key):
+    """Search Google Web for the official retailer website."""
+    query = f'"{description}" official retailer website USA'
+    params = {
+        "q": query,
+        "engine": "google",
+        "gl": "us",
+        "hl": "en",
+        "api_key": api_key,
+        "num": 10
+    }
+    try:
+        response = requests.get("https://serpapi.com/search", params=params, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+        if "error" in data:
+            st.warning(f"Web search error for '{description}': {data['error']}")
+            return…
+[11:31 PM, 10/21/2025] Sai Lakshmi✨: import streamlit as st
+import pandas as pd
+from urllib.parse import urlparse
+import requests
+from collections import Counter
+import time
+import random
 
 def search_google_web(description, api_key):
-    """
-    Searches Google Web. Returns a tuple: (list_of_links, corrected_query_string).
-    """
+    """Search Google Web for the official retailer website."""
     query = f'"{description}" official website USA'
     params = {"q": query, "engine": "google", "gl": "us", "hl": "en", "api_key": api_key, "num": 10}
     try:
@@ -19,19 +41,15 @@ def search_google_web(description, api_key):
         response.raise_for_status()
         data = response.json()
         if "error" in data:
-            return [], None
-        
-        links = [result['link'] for result in data.get("organic_results", []) if 'link' in result]
-        corrected_query = data.get("search_information", {}).get("query_displayed")
-        return links, corrected_query
-        
-    except requests.exceptions.RequestException:
-        return [], None
+            st.warning(f"Web search error for '{description}': {data['error']}")
+            return []
+        return [result['link'] for result in data.get("organic_results", []) if 'link' in result]
+    except requests.exceptions.RequestException as e:
+        st.error(f"Couldn't connect to web search API: {e}")
+        return []
 
 def search_google_images(description, api_key):
-    """
-    Searches Google Images. Returns a tuple: (list_of_sources, corrected_query_string).
-    """
+    """Search Google Images for logos related to the description."""
     query = f'"{description}" logo'
     params = {"q": query, "engine": "google_images", "gl": "us", "hl": "en", "api_key": api_key}
     try:
@@ -39,28 +57,40 @@ def search_google_images(description, api_key):
         response.raise_for_status()
         data = response.json()
         if "error" in data:
-            return [], None
-            
-        sources = [result['source'] for result in data.get("images_results", []) if 'source' in result]
-        corrected_query = data.get("search_information", {}).get("query_displayed")
-        return sources, corrected_query
-        
-    except requests.exceptions.RequestException:
-        return [], None
+            st.warning(f"Image search error for '{description}': {data['error']}")
+            return []
+        return [result['source'] for result in data.get("images_results", []) if 'source' in result]
+    except requests.exceptions.RequestException as e:
+        st.error(f"Couldn't connect to image search API: {e}")
+        return []
 
+# MODIFIED FUNCTION: Contains the new, expanded list of sites to skip.
 def get_clean_domains(links_or_sources):
     """Extract and clean domains, filtering out a comprehensive list of non-retail sites."""
     domains = []
+    
+    # NEW: Expanded list to filter out more irrelevant domains as requested.
     skip_these = [
-        "amazon", "ebay", "walmart", "target", "costco", "etsy", "facebook", "instagram", 
-        "twitter", "pinterest", "linkedin", "youtube", "reddit", "tiktok", "quora", "wikipedia", 
-        "forbes", "bloomberg", "reuters", "cnn", "wsj", "nytimes", "businessinsider", 
-        "techcrunch", "yelp", "tripadvisor", "mapquest", "foursquare", "instacart", 
-        "doordash", "grubhub", "postmates", "ubereats", "istockphoto", "shutterstock", 
-        "freepik", "vecteezy", "gettyimages", "adobestock", "google", "apple", "microsoft", 
-        "dollartree", "familydollar", "dollarstore", "biglots", "business", "news", 
-        "reviews", "top10", "coupons"
+        # Major Aggregators & Marketplaces
+        "amazon", "ebay", "walmart", "target", "costco", "etsy",
+        # Social Media & Content Platforms
+        "facebook", "instagram", "twitter", "pinterest", "linkedin", "youtube", "reddit", "tiktok", "quora",
+        # News & Information Outlets
+        "wikipedia", "forbes", "bloomberg", "reuters", "cnn", "wsj", "nytimes", "businessinsider", "techcrunch",
+        # Directories & Review Sites
+        "yelp", "tripadvisor", "mapquest", "foursquare",
+        # Delivery Services
+        "instacart", "doordash", "grubhub", "postmates", "ubereats",
+        # Stock Photo/Vector Sites
+        "istockphoto", "shutterstock", "freepik", "vecteezy", "gettyimages", "adobestock",
+        # Tech Platforms & Payment Systems
+        "google", "apple", "microsoft", 
+        # Dollar Stores & General Retailers (to find specific brand sites)
+        "dollartree", "familydollar", "dollarstore", "biglots",
+        # Generic terms that often appear in non-brand domains
+        "business", "news", "reviews", "top10", "coupons"
     ]
+    
     for link in links_or_sources:
         try:
             domain = urlparse(f"http://{link}").netloc.replace("www.", "")
@@ -83,14 +113,15 @@ def analyze_domain_uniqueness(domains):
     if top_count > 1:
         if len(most_common_list) == 1 or top_count > most_common_list[1][1]:
             is_dominant = "Yes"
+            
     return top_domain, is_dominant
 
 # --- Streamlit App UI ---
 
-st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
+st.set_page_config(page_title="Brand Presence Validator", page_icon="✅", layout="centered")
 
-st.title("🧠 Intelligent Brand Validator")
-st.caption("Output includes S.No., Retailer, Status, and Findings details.")
+st.title("✅ Brand Presence Validator")
+st.caption("Find a retailer's website and check for a unique brand presence using Web and Image search.")
 
 api_key = st.secrets.get("SERPAPI_KEY") if hasattr(st, 'secrets') else None
 if not api_key:
@@ -106,9 +137,6 @@ if uploaded_file and api_key:
             st.error("Upload failed! The CSV must contain a 'description' column.", icon="🚨")
             st.stop()
         
-        # NEW: Add S.No. column to the original DataFrame
-        df['sno'] = range(1, 1 + len(df))
-        
         st.success(f"File uploaded! Found {len(df)} brands to analyze.")
         
         st.header("2. Start Analysis")
@@ -123,71 +151,27 @@ if uploaded_file and api_key:
                 total = len(df)
                 for idx, row in df.iterrows():
                     description = row['description']
-                    current_sno = row['sno']
+                    status_text.text(f"Processing {idx + 1}/{total}: {description[:50]}...")
                     
-                    # Initialize findings for this row
-                    findings = []
-                    
-                    status_text.text(f"Processing {current_sno}/{total}: {description[:50]}...")
-                    
-                    # --- Core Logic Functions ---
-                    def run_searches(desc):
-                        web_links, web_correction = search_google_web(desc, api_key)
-                        web_domains = get_clean_domains(web_links)
-                        top_retailer, web_status = analyze_domain_uniqueness(web_domains)
+                    # --- NEW COMBINED LOGIC ---
+                    # 1. Analyze web search results
+                    web_links = search_google_web(description, api_key)
+                    web_domains = get_clean_domains(web_links)
+                    top_retailer, web_status = analyze_domain_uniqueness(web_domains)
 
-                        image_sources, image_correction = search_google_images(desc, api_key)
-                        logo_domains = get_clean_domains(image_sources)
-                        top_logo_source, image_status = analyze_domain_uniqueness(logo_domains)
-                        
-                        return top_retailer, web_status, top_logo_source, image_status, web_correction, image_correction
+                    # 2. Analyze image search results
+                    image_sources = search_google_images(description, api_key)
+                    logo_domains = get_clean_domains(image_sources)
+                    top_logo_source, image_status = analyze_domain_uniqueness(logo_domains)
 
-                    # PASS 1: Search with the original description
-                    (top_retailer, web_status, top_logo_source, image_status, 
-                     web_correction, image_correction) = run_searches(description)
-
+                    # 3. Determine final status with "OR" logic
                     final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
                     
-                    # Check for potential correction
-                    corrected_query = web_correction or image_correction
-                    is_corrected = False
-                    
-                    # PASS 2: If first pass failed, try again with Google's corrected query
-                    if final_status == "No" and corrected_query and corrected_query.lower() != description.lower():
-                        status_text.text(f"Processing {current_sno}/{total}: Correcting to '{corrected_query}'...")
-                        time.sleep(0.5) # Brief pause to show the message
-                        is_corrected = True
-                        
-                        # Re-run searches with the corrected query
-                        (top_retailer, web_status, top_logo_source, image_status, _, _) = run_searches(corrected_query)
-                        
-                        final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
-                        
-                        # Update findings based on correction result
-                        findings.append(f"Query corrected from '{description}' to '{corrected_query}'.")
-
-                    # --- Build Findings Message ---
-                    if final_status == "Yes":
-                        if web_status == "Yes" and image_status == "Yes":
-                            findings.append("Unique presence confirmed by both Website and Logo dominance.")
-                        elif web_status == "Yes":
-                            findings.append("Unique website found to be dominant.")
-                        elif image_status == "Yes":
-                            findings.append("Unique logo source found to be dominant.")
-                    else:
-                        findings.append("No dominant, unique website or logo was found.")
-                        
-                    # Final fallback for retailer name
+                    # 4. Fallback: If web search failed, use the top logo source as the retailer
                     if top_retailer == "Not found" and top_logo_source != "Not found":
                         top_retailer = top_logo_source
                         
-                    results.append({
-                        'sno': current_sno,
-                        'retailer': top_retailer, 
-                        'status': final_status,
-                        # Join the findings list into a single string
-                        'findings': " | ".join(findings) 
-                    })
+                    results.append({'retailer': top_retailer, 'status': final_status})
                     
                     progress_bar.progress((idx + 1) / total)
                     if idx < total - 1:
@@ -196,30 +180,18 @@ if uploaded_file and api_key:
                 status_text.success("Analysis Complete!", icon="🎉")
             
             results_df = pd.DataFrame(results)
+            df['retailer'] = results_df['retailer']
+            df['status'] = results_df['status']
             
-            # Merge results back into the original DataFrame (using 'sno' which is unique)
-            # This ensures we keep the original 'description' and any other columns
-            df_final = df.merge(results_df, on='sno', how='left')
-
-            # FINAL STEP: Select and reorder columns as requested
-            output_columns = ['sno', 'description', 'retailer', 'status', 'findings']
-            df_final = df_final[output_columns]
-
             st.header("3. Results")
-            st.markdown("status is 'Yes' if a unique website *OR* unique logo was found (typos auto-corrected).")
-            st.dataframe(df_final, use_container_width=True)
+            st.markdown("status is 'Yes' if a unique website *OR* a unique logo was found.")
+            st.dataframe(df, use_container_width=True)
             
-            dominant_count = (df_final['status'] == 'Yes').sum()
+            dominant_count = (df['status'] == 'Yes').sum()
             st.metric("Brands with a Unique Presence", f"{dominant_count} / {total}")
             
-            csv_data = df_final.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "Download Results as CSV", 
-                csv_data, 
-                "brand_validator_results.csv", 
-                "text/csv", 
-                use_container_width=True
-            )
+            csv_data = df.to_csv(index=False).encode('utf-8')
+            st.download_button("Download Results as CSV", csv_data, "brand_presence_results.csv", "text/csv", use_container_width=True)
     
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}", icon="🔥")
