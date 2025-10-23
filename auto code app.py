@@ -4,7 +4,7 @@ import difflib
 import time
 import random
 import re
-from fuzzywuzzy import fuzz  # For phonetic and partial ratio matching (install via requirements.txt)
+from fuzzywuzzy import fuzz  # For phonetic and partial ratio matching
 
 # Embedded requirements.txt for reference (create this file separately in the GitHub repository)
 # requirements.txt content:
@@ -12,7 +12,7 @@ from fuzzywuzzy import fuzz  # For phonetic and partial ratio matching (install 
 # pandas==2.2.3
 # fuzzywuzzy==0.18.0
 
-# Updated seed dataset
+# Updated seed dataset with more variations
 BRAND_SEED = {
     "CASH CHECK WISE INCREDIBLY FRIENDLY": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
     "MURPHY EXPRESS": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
@@ -93,13 +93,19 @@ BRAND_SEED = {
     "CHEWY ONLINE": {"retailer": "chewy.com", "logo_source": "https://www.chewy.com/logo.png"},
 }
 
-# Enhanced cleaning to handle noise dynamically
+# Enhanced cleaning with dynamic normalization
 def clean_description(description):
-    # Normalize special characters and spacing
+    # Preserve retailer-related patterns and normalize
     cleaned = re.sub(r'[^a-zA-Z0-9\s&]', ' ', description.upper().strip())  # Keep numbers and & for cases like 1stop&shop
     cleaned = re.sub(r'\s+', ' ', cleaned)  # Normalize multiple spaces
-    cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|INSTORE|PICKUP|ONLINE|\.COM|ACCOUNT SCRAPING|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG)\s+', ' ', cleaned)
-    return ' '.join(cleaned.split())  # Final normalization
+    # Remove common noise terms dynamically
+    noise_terms = r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|INSTORE|PICKUP|ONLINE|\.COM|ACCOUNT SCRAPING|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG)\s+'
+    cleaned = re.sub(noise_terms, ' ', cleaned)
+    # Attempt to split and recombine key terms
+    words = cleaned.split()
+    if len(words) > 1:
+        cleaned = ' '.join(w for w in words if len(w) > 2 or w in ['N', '&'])  # Filter short words except connectors
+    return cleaned.strip()
 
 # Convert domain to retailer name
 def domain_to_retailer_name(domain):
@@ -108,32 +114,41 @@ def domain_to_retailer_name(domain):
     name = domain.replace("www.", "").replace(".com", "").replace(".us", "").replace("-", " ")
     return ' '.join(word.capitalize() for word in name.split())
 
-# Dynamic fuzzy match with multiple passes
-def find_brand_match(description, cleaned=False):
+# Advanced dynamic fuzzy match
+def find_brand_match(description):
     orig_desc = description.upper().strip()
-    cleaned_desc = clean_description(description) if not cleaned else description
+    cleaned_desc = clean_description(description)
     
-    # Pass 1: Direct exact match
+    # Pass 1: Exact match on original or cleaned description
     if orig_desc in BRAND_SEED:
         return BRAND_SEED[orig_desc]["retailer"], domain_to_retailer_name(BRAND_SEED[orig_desc]["retailer"])
-    
-    # Pass 2: Cleaned description exact match
     if cleaned_desc in BRAND_SEED:
         return BRAND_SEED[cleaned_desc]["retailer"], domain_to_retailer_name(BRAND_SEED[cleaned_desc]["retailer"])
     
-    # Pass 3: Fuzzy match with looser cutoff
+    # Pass 2: Fuzzy match with very loose cutoff
     seed_keys = list(BRAND_SEED.keys())
-    matches = difflib.get_close_matches(cleaned_desc, seed_keys, n=3, cutoff=0.35)  # Looser cutoff for abbreviations
+    matches = difflib.get_close_matches(cleaned_desc, seed_keys, n=5, cutoff=0.25)  # Very loose cutoff
     if matches:
         best_match = matches[0]
         return BRAND_SEED[best_match]["retailer"], domain_to_retailer_name(BRAND_SEED[best_match]["retailer"])
     
-    # Pass 4: Partial word and phonetic matching
+    # Pass 3: Word-by-word fuzzy matching with phonetic similarity
     words = cleaned_desc.split()
     for word in words:
         for seed_key in seed_keys:
-            if fuzz.partial_ratio(word, seed_key) > 70 or fuzz.token_set_ratio(word, seed_key) > 70:
-                return BRAND_SEED[seed_key]["retailer"], domain_to_retailer_name(BRAND_SEED[seed_key]["retailer"])
+            key_words = seed_key.split()
+            for key_word in key_words:
+                if (fuzz.partial_ratio(word, key_word) > 60 or
+                    fuzz.token_set_ratio(word, key_word) > 60 or
+                    fuzz.phonetic(word, key_word)):  # Phonetic matching
+                    return BRAND_SEED[seed_key]["retailer"], domain_to_retailer_name(BRAND_SEED[seed_key]["retailer"])
+    
+    # Pass 4: Combination of words if no single match
+    for i in range(len(words), 0, -1):
+        partial = ' '.join(words[:i])
+        matches = difflib.get_close_matches(partial, seed_keys, n=1, cutoff=0.3)
+        if matches:
+            return BRAND_SEED[matches[0]]["retailer"], domain_to_retailer_name(BRAND_SEED[matches[0]]["retailer"])
     
     return "Not found", "Not found"
 
@@ -147,7 +162,7 @@ def is_vague_description(description):
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Validates retailer names using dynamic fuzzy matching with an expanded seed dataset (no API required).")
+st.caption("Validates retailer names using advanced dynamic fuzzy matching (no API required).")
 
 st.header("1. Upload Your File")
 uploaded_file = st.file_uploader("Your CSV must have 'S No' and 'description' columns.", type=["csv"])
@@ -188,7 +203,7 @@ if uploaded_file:
                         time.sleep(random.uniform(0.2, 0.5))
                         continue
                     
-                    # Multi-pass matching
+                    # Advanced matching
                     retailer_domain, retailer_name = find_brand_match(description)
                     status = "Okay" if retailer_domain != "Not found" else "Not Okay"
                     
@@ -208,7 +223,7 @@ if uploaded_file:
             df = results_df[['S No', 'description', 'retailer', 'status']]
             
             st.header("3. Results")
-            st.markdown("status is 'Okay' if a retailer is matched via dynamic fuzzy matching. 'Not Okay' for vague or unmatched descriptions.")
+            st.markdown("status is 'Okay' if a retailer is matched via advanced fuzzy matching. 'Not Okay' for vague or unmatched descriptions.")
             st.dataframe(df, use_container_width=True)
             
             okay_count = (df['status'] == 'Okay').sum()
