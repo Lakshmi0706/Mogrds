@@ -1,4 +1,2 @@
-streamlit
-pandas
-googlesearch-python
-pip install
+streamlit==1.39.0
+pandas==2.2.3
