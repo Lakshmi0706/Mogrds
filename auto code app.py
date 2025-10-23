@@ -5,7 +5,12 @@ import time
 import random
 import re
 
-# Updated seed dataset (same as provided)
+# Embedded requirements.txt for reference (create this file separately in the GitHub repository)
+# requirements.txt content:
+# streamlit==1.39.0
+# pandas==2.2.3
+
+# Updated seed dataset
 BRAND_SEED = {
     "CASH CHECK WISE INCREDIBLY FRIENDLY": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
     "MURPHY EXPRESS": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
@@ -169,7 +174,7 @@ if uploaded_file:
                             'status': 'Not Okay'
                         })
                         progress_bar.progress((idx + 1) / total)
-                        time.sleep(random.uniform(0.2, 0.5))  # Reduced delay for faster processing
+                        time.sleep(random.uniform(0.2, 0.5))
                         continue
                     
                     # PASS 1: Try BRAND_SEED match
