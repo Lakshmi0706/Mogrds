@@ -1,13 +1,11 @@
 import streamlit as st
 import pandas as pd
-from urllib.parse import urlparse
-from collections import Counter
-import difflib  # For fuzzy matching
+import difflib
 import time
-import re  # For cleaning
-from googlesearch import search  # --- IMPORT FOR GOOGLE SEARCH ---
+import random
+import re
 
-# BRAND_SEED is used to find a "clean" search query
+# Updated seed dataset (same as provided)
 BRAND_SEED = {
     "CASH CHECK WISE INCREDIBLY FRIENDLY": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
     "MURPHY EXPRESS": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
@@ -90,104 +88,68 @@ BRAND_SEED = {
 
 # Enhanced cleaning to handle noise
 def clean_description(description):
-    cleaned = re.sub(r'\d+', '', description.upper().strip())  # Remove numbers
+    cleaned = re.sub(r'[^a-zA-Z\s]', '', description.upper().strip())  # Remove numbers and special characters
     cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|INSTORE|PICKUP|ONLINE|\.COM|ACCOUNT SCRAPING|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG)\s+', ' ', cleaned)
     return ' '.join(cleaned.split())  # Normalize spaces
 
-# Fuzzy matching function to find a CLEAN search query
-def find_brand_match_key(description):
-    """
-    Tries to find a match in BRAND_SEED.
-    Returns the MATCHED KEY (e.g., "COSTCO") if found, otherwise None.
-    This provides a clean search term for Google.
-    """
+# Convert domain to retailer name
+def domain_to_retailer_name(domain):
+    if not domain or domain == "Not found":
+        return "Not found"
+    name = domain.replace("www.", "").replace(".com", "").replace(".us", "").replace("-", " ")
+    return ' '.join(word.capitalize() for word in name.split())
+
+# Fuzzy match with BRAND_SEED
+def find_brand_match(description, cleaned=False):
     orig_desc = description.upper().strip()
-    cleaned_desc = clean_description(description)
+    cleaned_desc = clean_description(description) if not cleaned else description
     
     # Direct exact match
     if orig_desc in BRAND_SEED:
-        return orig_desc # Return the matched key
+        return BRAND_SEED[orig_desc]["retailer"], domain_to_retailer_name(BRAND_SEED[orig_desc]["retailer"])
     
-    # Fuzzy match on original
-    matches = difflib.get_close_matches(orig_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.45)  # 45% threshold
+    # Fuzzy match on original description
+    matches = difflib.get_close_matches(orig_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.5)  # Increased cutoff to 0.5
     if matches:
-        return matches[0] # Return the matched key
+        return BRAND_SEED[matches[0]]["retailer"], domain_to_retailer_name(BRAND_SEED[matches[0]]["retailer"])
     
-    # Fallback: Fuzzy on cleaned description
-    matches = difflib.get_close_matches(cleaned_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.45)
-    if matches:
-        return matches[0] # Return the matched key
+    # Try cleaned description
+    if cleaned_desc != orig_desc and not cleaned:
+        matches = difflib.get_close_matches(cleaned_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.5)
+        if matches:
+            return BRAND_SEED[matches[0]]["retailer"], domain_to_retailer_name(BRAND_SEED[matches[0]]["retailer"])
     
-    return None # No match found
+    return "Not found", "Not found"
 
-def get_domain(url):
-    if not url:
-        return None
-    try:
-        return urlparse(url).netloc.replace("www.", "")
-    except:
-        return None
-
-def get_clean_domains(links_or_sources):
-    """Extract and clean domains, filtering out non-retail sites."""
-    domains = []
-    # This list is crucial to filter out noise
-    skip_these = [
-        "facebook", "instagram", "twitter", "linkedin", "youtube", "reddit", "tiktok",
-        "wikipedia", "forbes", "bloomberg", "cnn", "wsj", "nytimes", "yelp",
-        "tripadvisor", "mapquest", "google", "apple", "microsoft", "foursquare"
-    ]
-    for link in links_or_sources:
-        domain = get_domain(link)
-        if domain and not any(skip in domain.lower() for skip in skip_these):
-            domains.append(domain)
-    return domains
-
-def analyze_domain_uniqueness(domains):
-    """Determines the top domain and if it's a unique, clear winner."""
-    if not domains:
-        return "Not found", "No"
-    
-    domain_counts = Counter(domains)
-    most_common_list = domain_counts.most_common(2)
-    top_domain, top_count = most_common_list[0]
-    
-    is_dominant = "No"
-    
-    # Check 1: Is there only one unique domain found in the results?
-    if len(most_common_list) == 1 and top_count > 0:
-        is_dominant = "Yes"
-    # Check 2: Is the top domain strictly more common than the second place?
-    elif len(most_common_list) > 1 and top_count > most_common_list[1][1]:
-        is_dominant = "Yes"
-        
-    return top_domain, is_dominant
+# Check if description is vague
+def is_vague_description(description):
+    cleaned = clean_description(description)
+    return len(cleaned) < 3 or not any(c.isalpha() for c in cleaned)
 
 # --- Streamlit App UI ---
 
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Validates brand presence using Google Search, aided by the seed dataset.")
+st.caption("Validates retailer names using fuzzy matching with an expanded seed dataset (no API required).")
 
 st.header("1. Upload Your File")
-uploaded_file = st.file_uploader("Your CSV must have a 'description' column.", type=["csv"])
+uploaded_file = st.file_uploader("Your CSV must have 'S No' and 'description' columns.", type=["csv"])
 
 if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file)
-        if 'description' not in df.columns:
-            st.error("Upload failed! The CSV must contain a 'description' column.", icon="🚨")
+        if 'S No' not in df.columns or 'description' not in df.columns:
+            st.error("Upload failed! The CSV must contain 'S No' and 'description' columns.", icon="🚨")
             st.stop()
         
-        st.success(f"File uploaded! Found {len(df)} brands to analyze.")
+        st.success(f"File uploaded! Found {len(df)} descriptions to analyze.")
         
         st.header("2. Start Analysis")
-        st.warning("This process queries Google live and will be slow to avoid IP blocks.", icon="⏳")
-        start_btn = st.button("Validate Brand Presence", type="primary", use_container_width=True)
+        start_btn = st.button("Validate Retailer Presence", type="primary", use_container_width=True)
         
         if start_btn:
-            with st.spinner("Analyzing... This will take time as it queries Google live."):
+            with st.spinner("Analyzing... This may take a moment."):
                 results = []
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -195,58 +157,61 @@ if uploaded_file:
                 total = len(df)
                 for idx, row in df.iterrows():
                     description = str(row['description'])
+                    s_no = row['S No']
+                    status_text.text(f"Processing {idx + 1}/{total}: {description[:50]}...")
                     
-                    # --- 1. GET SEARCH QUERY ---
-                    # Use fuzzy match on BRAND_SEED to get a cleaner search term
-                    matched_key = find_brand_match_key(description)
+                    # Check for vague description
+                    if is_vague_description(description):
+                        results.append({
+                            'S No': s_no,
+                            'description': description,
+                            'retailer': 'Not found',
+                            'status': 'Not Okay'
+                        })
+                        progress_bar.progress((idx + 1) / total)
+                        time.sleep(random.uniform(0.2, 0.5))  # Reduced delay for faster processing
+                        continue
                     
-                    if matched_key:
-                        search_query = matched_key  # e.g., "COSTCO"
-                    else:
-                        search_query = clean_description(description) # e.g., "CRAN HY SUCCO"
+                    # PASS 1: Try BRAND_SEED match
+                    retailer_domain, retailer_name = find_brand_match(description)
+                    status = "Okay" if retailer_domain != "Not found" else "Not Okay"
                     
-                    status_text.text(f"Processing {idx + 1}/{total}: Searching for '{search_query}'...")
+                    # PASS 2: Cleaned description if no match
+                    if status == "Not Okay":
+                        cleaned_desc = clean_description(description)
+                        if cleaned_desc != description.upper().strip():
+                            status_text.text(f"Correcting to '{cleaned_desc}' and re-matching...")
+                            time.sleep(0.5)
+                            retailer_domain, retailer_name = find_brand_match(cleaned_desc, cleaned=True)
+                            status = "Okay" if retailer_domain != "Not found" else "Not Okay"
                     
-                    # --- 2. PERFORM GOOGLE SEARCH ---
-                    try:
-                        # Get top 10 results. pause=2.0 to avoid IP blocks.
-                        search_results_links = list(search(search_query, tld="com", num=10, stop=10, pause=2.0))
-                    except Exception as e:
-                        st.warning(f"Search failed for '{search_query}' (possible rate-limiting): {e}. Skipping.")
-                        search_results_links = []
-                        time.sleep(5)  # Take a break if we get an error
-
-                    # --- 3. ANALYZE RESULTS ---
-                    # Clean the domains, removing social media, news, etc.
-                    web_domains = get_clean_domains(search_results_links)
+                    results.append({
+                        'S No': s_no,
+                        'description': description,
+                        'retailer': retailer_name,
+                        'status': status
+                    })
                     
-                    # Find the most dominant, unique domain
-                    top_retailer, web_status = analyze_domain_uniqueness(web_domains) # web_status is "Yes" or "No"
-
-                    # --- 4. FORMAT OUTPUT ---
-                    final_status = "Okay" if web_status == "Yes" else "Not Okay"
-                    
-                    results.append({'retailer': top_retailer, 'status': final_status})
                     progress_bar.progress((idx + 1) / total)
+                    time.sleep(random.uniform(0.2, 0.5))
                 
                 status_text.success("Analysis Complete!", icon="🎉")
             
             results_df = pd.DataFrame(results)
-            df['retailer'] = results_df['retailer']
-            df['status'] = results_df['status']
+            df = results_df[['S No', 'description', 'retailer', 'status']]
             
             st.header("3. Results")
-            st.markdown("status is 'Okay' if a unique website was found in Google Search (excluding social media, news, etc.).")
+            st.markdown("status is 'Okay' if a retailer is matched via fuzzy matching. 'Not Okay' for vague or unmatched descriptions.")
             st.dataframe(df, use_container_width=True)
             
-            dominant_count = (df['status'] == 'Okay').sum()
-            st.metric("Brands with a Unique Web Presence (Status 'Okay')", f"{dominant_count} / {total}")
+            okay_count = (df['status'] == 'Okay').sum()
+            st.metric("Descriptions with Valid Retailer", f"{okay_count} / {total}")
             
             csv_data = df.to_csv(index=False).encode('utf-8')
-            st.download_button("Download Results", csv_data, "brand_validator_results.csv", "text/csv", use_container_width=True)
+            st.download_button("Download Results", csv_data, "retailer_validator_results.csv", "text/csv", use_container_width=True)
     
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}", icon="🔥")
 
 else:
-    st.info("Please upload a CSV file to get started.")
+    st.info("Please upload a CSV file with 'S No' and 'description' columns to get started.")
