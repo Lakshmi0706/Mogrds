@@ -3,16 +3,28 @@ import pandas as pd
 import requests
 from io import BytesIO
 from difflib import SequenceMatcher
+from urllib.parse import urlparse
 
-# Hardcoded credentials (use st.secrets in production)
+# Hardcoded credentials (use st.secrets for production)
 API_KEY = "AIzaSyBYS2Qsc6rES4sKtr3wcz-74V5leOgJaV4"
 CX = "e2eddc6d351e647af"
 
-st.title("Enhanced Company Website Finder")
+# Domains to exclude
+EXCLUDE_DOMAINS = ["facebook.com", "wikipedia.org", "linkedin.com", "instagram.com", "gov", "blogspot"]
 
-# Function for fuzzy match
-def is_match(retailer, text, threshold=0.6):
-    return SequenceMatcher(None, retailer.lower(), text.lower()).ratio() >= threshold
+st.title("Smart Retailer Website Finder")
+
+# Fuzzy match function
+def similarity(a, b):
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+def is_official_domain(link, retailer):
+    domain = urlparse(link).netloc
+    if any(ex in domain for ex in EXCLUDE_DOMAINS):
+        return False
+    if domain.endswith(".com") and similarity(retailer, domain) > 0.5:
+        return True
+    return False
 
 # Upload CSV
 uploaded_file = st.file_uploader("Upload a CSV file with company names", type=["csv"])
@@ -28,24 +40,30 @@ if uploaded_file:
 
         for i, row in df.iterrows():
             retailer_name = row['Company']
-            query = f"{retailer_name} official website"
-            url = f"https://www.googleapis.com/customsearch/v1?q={query}&key={API_KEY}&cx={CX}&num=5"
+            query = f"{retailer_name} official site"
+            url = f"https://www.googleapis.com/customsearch/v1?q={query}&key={API_KEY}&cx={CX}&num=10"
             response = requests.get(url).json()
 
             official_site = "No result found"
             status = "NOT OK"
+            best_score = 0
 
             if "items" in response:
                 for item in response["items"]:
                     title = item.get("title", "")
-                    snippet = item.get("snippet", "")
                     link = item.get("link", "")
+                    domain = urlparse(link).netloc
 
-                    # Check for strong match in title, snippet, or domain
-                    if (is_match(retailer_name, title) or is_match(retailer_name, snippet) or is_match(retailer_name, link)):
+                    # Skip excluded domains
+                    if any(ex in domain for ex in EXCLUDE_DOMAINS):
+                        continue
+
+                    # Calculate score based on title + domain match
+                    score = max(similarity(retailer_name, title), similarity(retailer_name, domain))
+                    if score > best_score and domain.endswith(".com"):
+                        best_score = score
                         official_site = link
                         status = "OK"
-                        break  # Stop at first strong match
 
             output_df.loc[i] = [i + 1, retailer_name, official_site, status]
 
