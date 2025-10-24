@@ -4,73 +4,107 @@ import requests
 from io import BytesIO
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
+import re
 
-# Hardcoded credentials (use st.secrets for production)
+# Load merchant list from uploaded Excel
+merchant_df = pd.read_excel("merchant list.xlsx", sheet_name=None, engine="openpyxl")
+merchant_names = set()
+for sheet in merchant_df.values():
+    merchant_names.update(sheet.iloc[:, 0].dropna().astype(str).tolist())
+
+# Normalize merchant names
+merchant_names_cleaned = [re.sub(r'[^a-zA-Z]', '', name).lower() for name in merchant_names]
+
+# API credentials
 API_KEY = "AIzaSyBYS2Qsc6rES4sKtr3wcz-74V5leOgJaV4"
 CX = "e2eddc6d351e647af"
 
 # Domains to exclude
 EXCLUDE_DOMAINS = ["facebook.com", "wikipedia.org", "linkedin.com", "instagram.com", "gov", "blogspot"]
 
-st.title("Smart Retailer Website Finder")
+# Utility functions
+def clean_name(name):
+    return re.sub(r'[^a-zA-Z]', '', name).lower()
 
-# Fuzzy match function
 def similarity(a, b):
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
-def is_official_domain(link, retailer):
-    domain = urlparse(link).netloc
-    if any(ex in domain for ex in EXCLUDE_DOMAINS):
-        return False
-    if domain.endswith(".com") and similarity(retailer, domain) > 0.5:
-        return True
-    return False
+def find_best_match(name):
+    name_clean = clean_name(name)
+    best_score = 0
+    best_match = name
+    for merchant in merchant_names_cleaned:
+        score = similarity(name_clean, merchant)
+        if score > best_score:
+            best_score = score
+            best_match = merchant
+    return best_match, best_score
 
-# Upload CSV
-uploaded_file = st.file_uploader("Upload a CSV file with company names", type=["csv"])
+def calculate_score(retailer, title, snippet, link):
+    domain = urlparse(link).netloc.lower()
+    retailer_clean = clean_name(retailer)
+    score = 0
+    if retailer_clean in domain:
+        score += 0.7
+    score += similarity(retailer, title) * 0.2
+    score += similarity(retailer, snippet) * 0.1
+    return score
+
+def is_valid_domain(link):
+    domain = urlparse(link).netloc.lower()
+    return not any(ex in domain for ex in EXCLUDE_DOMAINS)
+
+# Streamlit app
+st.title("Retailer Website Finder with Merchant Matching")
+
+uploaded_file = st.file_uploader("Upload a CSV or Excel file with company names", type=["csv", "xlsx"])
 
 if uploaded_file:
-    df = pd.read_csv(uploaded_file)
+    if uploaded_file.name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file, engine="openpyxl")
+
     st.write("Uploaded Data:", df.head())
 
     if 'Company' not in df.columns:
-        st.error("CSV must have a column named 'Company'")
+        st.error("File must have a column named 'Company'")
     else:
-        output_df = pd.DataFrame(columns=["S No", "Retailer Name", "Official Website", "Status"])
+        output_df = pd.DataFrame(columns=["S No", "Original Name", "Corrected Name", "Official Website", "Status", "Confidence Score"])
+        progress = st.progress(0)
 
         for i, row in df.iterrows():
-            retailer_name = row['Company']
-            query = f"{retailer_name} official site"
+            original_name = row['Company']
+            corrected_name, match_score = find_best_match(original_name)
+            query = f"{corrected_name} official site"
             url = f"https://www.googleapis.com/customsearch/v1?q={query}&key={API_KEY}&cx={CX}&num=10"
             response = requests.get(url).json()
 
-            official_site = "No result found"
-            status = "NOT OK"
+            best_site = "No result found"
             best_score = 0
+            status = "NOT OK"
 
             if "items" in response:
                 for item in response["items"]:
                     title = item.get("title", "")
+                    snippet = item.get("snippet", "")
                     link = item.get("link", "")
-                    domain = urlparse(link).netloc
 
-                    # Skip excluded domains
-                    if any(ex in domain for ex in EXCLUDE_DOMAINS):
-                        continue
+                    if is_valid_domain(link):
+                        score = calculate_score(corrected_name, title, snippet, link)
+                        if score > best_score:
+                            best_score = score
+                            best_site = link
 
-                    # Calculate score based on title + domain match
-                    score = max(similarity(retailer_name, title), similarity(retailer_name, domain))
-                    if score > best_score and domain.endswith(".com"):
-                        best_score = score
-                        official_site = link
-                        status = "OK"
+            if best_score >= 0.6:
+                status = "OK"
 
-            output_df.loc[i] = [i + 1, retailer_name, official_site, status]
+            output_df.loc[i] = [i + 1, original_name, corrected_name, best_site, status, round(best_score, 2)]
+            progress.progress((i + 1) / len(df))
 
         st.success("Search completed!")
         st.write(output_df)
 
-        # Download Excel
         output = BytesIO()
         output_df.to_excel(output, index=False)
         output.seek(0)
