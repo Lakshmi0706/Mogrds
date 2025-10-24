@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from io import BytesIO
 
-# Your credentials (hardcoded for now)
+# Hardcoded credentials (for production use st.secrets)
 API_KEY = "AIzaSyBYS2Qsc6rES4sKtr3wcz-74V5leOgJaV4"
 CX = "e2eddc6d351e647af"
 
@@ -20,28 +20,33 @@ if uploaded_file:
     if 'Company' not in df.columns:
         st.error("CSV must have a column named 'Company'")
     else:
-        # Add a new column for official websites
-        df['Official Website'] = ""
+        # Prepare output DataFrame
+        output_df = pd.DataFrame(columns=["S No", "Retailer Name", "Official Website", "Status"])
 
         # Fetch websites using Google Custom Search API
         for i, row in df.iterrows():
-            company = row['Company']
-            query = f"{company} official website"
+            retailer_name = row['Company']
+            query = f"{retailer_name} official website"
             url = f"https://www.googleapis.com/customsearch/v1?q={query}&key={API_KEY}&cx={CX}"
             response = requests.get(url).json()
+
             if "items" in response:
-                df.at[i, 'Official Website'] = response["items"][0]["link"]
+                official_site = response["items"][0]["link"]
+                status = "OK"
             else:
-                df.at[i, 'Official Website'] = "No result found"
+                official_site = "No result found"
+                status = "NOT OK"
+
+            output_df.loc[i] = [i + 1, retailer_name, official_site, status]
 
         st.success("Search completed!")
 
         # Display results
-        st.write(df)
+        st.write(output_df)
 
         # --- Download Excel ---
         output = BytesIO()
-        df.to_excel(output, index=False)
+        output_df.to_excel(output, index=False)
         output.seek(0)
         st.download_button(
             label="Download Results as Excel",
@@ -53,7 +58,7 @@ if uploaded_file:
 # --- Embedded Google Search Box ---
 st.header("Manual Google Search")
 html_code = """
-<script async srce.com/cse.js?cx=e2eddc6d351e647af</script>
+https://cse.google.com/cse.js?cx=e2eddc6d351e647af</script>
 <div class="gcse-search"></div>
 """
 st.components.v1.html(html_code, height=600)
