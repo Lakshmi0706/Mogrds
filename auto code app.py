@@ -1,33 +1,59 @@
 import streamlit as st
+import pandas as pd
 import requests
+from io import BytesIO
 
-# Use secrets for security in production
-API_KEY = "AIzaSyBYS2Qsc6rES4sKtr3wcz-74V5leOgJaV4"  # Replace with st.secrets["API_KEY"] in Streamlit Cloud
-CX = "e2eddc6d351e647af"  # Replace with st.secrets["CX"]
+# Load secrets
+API_KEY = st.secrets["API_KEY"]
+CX = st.secrets["CX"]
 
 st.title("Company Website Finder + Google Search")
 
-# --- Section 1: Automated Official Website Fetch ---
-st.header("Official Websites for Companies")
+# --- Upload CSV ---
+uploaded_file = st.file_uploader("Upload a CSV file with company names and descriptions", type=["csv"])
 
-companies = ["Tata Motors", "Infosys", "Reliance Industries", "HDFC Bank"]
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    st.write("Uploaded Data:", df.head())
 
-def get_official_website(company):
-    query = f"{company} official website"
-    url = f"https://www.googleapis.com/customsearch/v1?q={query}&key={API_KEY}&cx={CX}"
-    response = requests.get(url).json()
-    if "items" in response:
-        return response["items"][0]["link"]
-    return "No result found"
+    # Check if 'Company' column exists
+    if 'Company' not in df.columns:
+        st.error("CSV must have a column named 'Company'")
+    else:
+        # Add a new column for official websites
+        df['Official Website'] = ""
 
-for company in companies:
-    website = get_official_website(company)
-    st.write(f"**{company}**: {website}")
+        # Fetch websites using Google Custom Search API
+        for i, row in df.iterrows():
+            company = row['Company']
+            query = f"{company} official website"
+            url = f"https://www.googleapis.com/customsearch/v1?q={query}&key={API_KEY}&cx={CX}"
+            response = requests.get(url).json()
+            if "items" in response:
+                df.at[i, 'Official Website'] = response["items"][0]["link"]
+            else:
+                df.at[i, 'Official Website'] = "No result found"
 
-# --- Section 2: Embedded Google Search Box ---
-st.header("Search Anything with Google CSE")
+        st.success("Search completed!")
+
+        # Display results
+        st.write(df)
+
+        # --- Download Excel ---
+        output = BytesIO()
+        df.to_excel(output, index=False)
+        output.seek(0)
+        st.download_button(
+            label="Download Results as Excel",
+            data=output,
+            file_name="company_websites.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+# --- Embedded Google Search Box ---
+st.header("Manual Google Search")
 html_code = """
-<script async srce.com/cse.js?cx=e2eddc6d351e647af</script>
+https://cse.google.com/cse.js?cx=e2eddc6d351e647af</script>
 <div class="gcse-search"></div>
 """
 st.components.v1.html(html_code, height=600)
