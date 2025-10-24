@@ -83,7 +83,7 @@ if uploaded_file and merchant_names_cleaned:
         for i, row in df.iterrows():
             original_name = row['Company']
             corrected_name, match_score = find_best_match(original_name)
-            query = f"{corrected_name} official website site:.com"
+            query = f"{corrected_name} official website"
             url = f"https://www.googleapis.com/customsearch/v1?q={query}&key={API_KEY}&cx={CX}&num=10"
             response = requests.get(url).json()
 
@@ -103,11 +103,17 @@ if uploaded_file and merchant_names_cleaned:
                         if score > best_score:
                             best_score = score
 
-                        # Official match logic: domain contains corrected name OR fuzzy match > 0.7
-                        if corrected_name in domain or similarity(corrected_name, domain) > 0.7:
+                        # Official match logic: partial or fuzzy domain match
+                        parts = [p for p in corrected_name.split() if p]
+                        if any(p in domain for p in parts) or similarity(corrected_name, domain) > 0.6:
                             best_site = link
                             status = "OK"
                             break
+
+            # Fallback: if confidence score is high and domain looks brand-like
+            if status == "NOT OK" and best_score >= 0.6:
+                best_site = "Likely match (check manually)"
+                status = "OK"
 
             output_df.loc[i] = [i + 1, original_name, corrected_name, best_site, status, round(best_score, 2)]
 
@@ -152,3 +158,4 @@ https://cse.google.com/cse.js?cx=e2eddc6d351e647af</script>
 <div class="gcse-search"></div>
 """
 st.components.v1.html(html_code, height=600)
+``
