@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from io import BytesIO
+from difflib import SequenceMatcher
 from urllib.parse import urlparse
 import re
 
@@ -17,16 +18,22 @@ def clean_name(name):
         return ""
     return re.sub(r'[^a-zA-Z]', '', str(name)).lower()
 
+def similarity(a, b):
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+def calculate_score(retailer, title, snippet, link):
+    domain = urlparse(link).netloc.lower()
+    retailer_clean = clean_name(retailer)
+    score = 0
+    if retailer_clean in domain:
+        score += 0.7
+    score += similarity(retailer, title) * 0.2
+    score += similarity(retailer, snippet) * 0.1
+    return score
+
 def is_valid_domain(link):
     domain = urlparse(link).netloc.lower()
     return not any(ex in domain for ex in EXCLUDE_DOMAINS)
-
-def domain_matches(link, corrected_name):
-    domain = urlparse(link).netloc.lower()
-    return corrected_name in domain
-
-def title_matches(title, corrected_name):
-    return corrected_name in title.lower()
 
 st.title("Retailer Website Finder with Merchant Matching")
 
@@ -45,13 +52,13 @@ if merchant_file:
 def find_best_match(name):
     name_clean = clean_name(name)
     best_score = 0
-    best_match = name_clean
+    best_match = name
     for merchant in merchant_names_cleaned:
-        score = sum(ch1 == ch2 for ch1, ch2 in zip(name_clean, merchant)) / max(len(name_clean), len(merchant))
+        score = similarity(name_clean, merchant)
         if score > best_score:
             best_score = score
             best_match = merchant
-    return best_match
+    return best_match, best_score
 
 # Upload company list
 uploaded_file = st.file_uploader("Upload Company List (CSV or Excel)", type=["csv", "xlsx"])
@@ -67,7 +74,7 @@ if uploaded_file and merchant_names_cleaned:
     if 'Company' not in df.columns:
         st.error("File must have a column named 'Company'")
     else:
-        output_df = pd.DataFrame(columns=["S No", "Original Name", "Corrected Name", "Official Website", "Status"])
+        output_df = pd.DataFrame(columns=["S No", "Original Name", "Corrected Name", "Official Website", "Status", "Confidence Score"])
         progress = st.progress(0)
         status_text = st.empty()
 
@@ -75,25 +82,34 @@ if uploaded_file and merchant_names_cleaned:
 
         for i, row in df.iterrows():
             original_name = row['Company']
-            corrected_name = find_best_match(original_name)
+            corrected_name, match_score = find_best_match(original_name)
             query = f"{corrected_name} official site"
             url = f"https://www.googleapis.com/customsearch/v1?q={query}&key={API_KEY}&cx={CX}&num=10"
             response = requests.get(url).json()
 
-            official_site = "No result found"
+            best_site = "No result found"
+            best_score = 0
             status = "NOT OK"
 
             if "items" in response:
                 for item in response["items"]:
-                    title = item.get("title", "")
+                    title = item.get("title", "").lower()
+                    snippet = item.get("snippet", "")
                     link = item.get("link", "")
+                    domain = urlparse(link).netloc.lower()
 
-                    if is_valid_domain(link) and (domain_matches(link, corrected_name) or title_matches(title, corrected_name)):
-                        official_site = link
-                        status = "OK"
-                        break
+                    if is_valid_domain(link):
+                        score = calculate_score(corrected_name, title, snippet, link)
+                        if score > best_score:
+                            best_score = score
 
-            output_df.loc[i] = [i + 1, original_name, corrected_name, official_site, status]
+                        # Check for official match
+                        if corrected_name in domain or corrected_name in title:
+                            best_site = link
+                            status = "OK"
+                            break
+
+            output_df.loc[i] = [i + 1, original_name, corrected_name, best_site, status, round(best_score, 2)]
 
             # Update progress
             percent = int(((i + 1) / total) * 100)
@@ -101,7 +117,10 @@ if uploaded_file and merchant_names_cleaned:
             status_text.text(f"Processing: {i + 1} of {total} ({percent}%)")
 
         st.success("Search completed!")
-        st.write(output_df)
+
+        # Display results
+        styled_df = output_df.style.applymap(lambda v: 'color: green;' if isinstance(v, float) and v >= 0.6 else 'color: red;', subset=['Confidence Score'])
+        st.write(styled_df)
 
         # Download full results
         output = BytesIO()
