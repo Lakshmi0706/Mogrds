@@ -83,7 +83,7 @@ if uploaded_file and merchant_names_cleaned:
         for i, row in df.iterrows():
             original_name = row['Company']
             corrected_name, match_score = find_best_match(original_name)
-            query = f"{corrected_name} official site"
+            query = f"{corrected_name} official website site:.com"
             url = f"https://www.googleapis.com/customsearch/v1?q={query}&key={API_KEY}&cx={CX}&num=10"
             response = requests.get(url).json()
 
@@ -103,8 +103,8 @@ if uploaded_file and merchant_names_cleaned:
                         if score > best_score:
                             best_score = score
 
-                        # Check for official match
-                        if corrected_name in domain or corrected_name in title:
+                        # Official match logic: domain contains corrected name OR fuzzy match > 0.7
+                        if corrected_name in domain or similarity(corrected_name, domain) > 0.7:
                             best_site = link
                             status = "OK"
                             break
@@ -114,7 +114,7 @@ if uploaded_file and merchant_names_cleaned:
             # Update progress
             percent = int(((i + 1) / total) * 100)
             progress.progress((i + 1) / total)
-            status_text.text(f"Processing: {i + 1} of {total} ({percent}%)")
+            status_text.text(f"Processing: {i + 1} of {total} ({percent}%) - Searching for: {corrected_name}")
 
         st.success("Search completed!")
 
