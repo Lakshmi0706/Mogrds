@@ -14,7 +14,9 @@ EXCLUDE_DOMAINS = ["facebook.com", "wikipedia.org", "linkedin.com", "instagram.c
 
 # Utility functions
 def clean_name(name):
-    return re.sub(r'[^a-zA-Z]', '', name).lower()
+    if pd.isna(name):
+        return ""
+    return re.sub(r'[^a-zA-Z]', '', str(name)).lower()
 
 def similarity(a, b):
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
@@ -33,6 +35,7 @@ def is_valid_domain(link):
     domain = urlparse(link).netloc.lower()
     return not any(ex in domain for ex in EXCLUDE_DOMAINS)
 
+# Streamlit UI
 st.title("Retailer Website Finder with Merchant Matching")
 
 # Upload merchant list
@@ -105,15 +108,31 @@ if uploaded_file and merchant_names_cleaned:
             progress.progress((i + 1) / len(df))
 
         st.success("Search completed!")
-        st.write(output_df)
 
+        # Color-coded confidence
+        styled_df = output_df.style.applymap(lambda v: 'color: green;' if isinstance(v, float) and v >= 0.6 else 'color: red;', subset=['Confidence Score'])
+        st.write(styled_df)
+
+        # Download full results
         output = BytesIO()
         output_df.to_excel(output, index=False)
         output.seek(0)
         st.download_button(
-            label="Download Results as Excel",
+            label="Download All Results as Excel",
             data=output,
             file_name="company_websites.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # Download only OK results
+        ok_df = output_df[output_df['Status'] == 'OK']
+        ok_output = BytesIO()
+        ok_df.to_excel(ok_output, index=False)
+        ok_output.seek(0)
+        st.download_button(
+            label="Download Only OK Results",
+            data=ok_output,
+            file_name="company_websites_OK.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
