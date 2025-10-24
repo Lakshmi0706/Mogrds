@@ -35,7 +35,6 @@ def is_valid_domain(link):
     domain = urlparse(link).netloc.lower()
     return not any(ex in domain for ex in EXCLUDE_DOMAINS)
 
-# Streamlit UI
 st.title("Retailer Website Finder with Merchant Matching")
 
 # Upload merchant list
@@ -77,6 +76,9 @@ if uploaded_file and merchant_names_cleaned:
     else:
         output_df = pd.DataFrame(columns=["S No", "Original Name", "Corrected Name", "Official Website", "Status", "Confidence Score"])
         progress = st.progress(0)
+        status_text = st.empty()
+
+        total = len(df)
 
         for i, row in df.iterrows():
             original_name = row['Company']
@@ -105,11 +107,15 @@ if uploaded_file and merchant_names_cleaned:
                 status = "OK"
 
             output_df.loc[i] = [i + 1, original_name, corrected_name, best_site, status, round(best_score, 2)]
-            progress.progress((i + 1) / len(df))
+
+            # Update progress
+            percent = int(((i + 1) / total) * 100)
+            progress.progress((i + 1) / total)
+            status_text.text(f"Processing: {i + 1} of {total} ({percent}%)")
 
         st.success("Search completed!")
 
-        # Color-coded confidence
+        # Display results
         styled_df = output_df.style.applymap(lambda v: 'color: green;' if isinstance(v, float) and v >= 0.6 else 'color: red;', subset=['Confidence Score'])
         st.write(styled_df)
 
