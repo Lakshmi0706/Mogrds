@@ -6,20 +6,10 @@ from difflib import SequenceMatcher
 from urllib.parse import urlparse
 import re
 
-# Load merchant list from uploaded Excel
-merchant_df = pd.read_excel("merchant list.xlsx", sheet_name=None, engine="openpyxl")
-merchant_names = set()
-for sheet in merchant_df.values():
-    merchant_names.update(sheet.iloc[:, 0].dropna().astype(str).tolist())
-
-# Normalize merchant names
-merchant_names_cleaned = [re.sub(r'[^a-zA-Z]', '', name).lower() for name in merchant_names]
-
 # API credentials
 API_KEY = "AIzaSyBYS2Qsc6rES4sKtr3wcz-74V5leOgJaV4"
 CX = "e2eddc6d351e647af"
 
-# Domains to exclude
 EXCLUDE_DOMAINS = ["facebook.com", "wikipedia.org", "linkedin.com", "instagram.com", "gov", "blogspot"]
 
 # Utility functions
@@ -28,17 +18,6 @@ def clean_name(name):
 
 def similarity(a, b):
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
-
-def find_best_match(name):
-    name_clean = clean_name(name)
-    best_score = 0
-    best_match = name
-    for merchant in merchant_names_cleaned:
-        score = similarity(name_clean, merchant)
-        if score > best_score:
-            best_score = score
-            best_match = merchant
-    return best_match, best_score
 
 def calculate_score(retailer, title, snippet, link):
     domain = urlparse(link).netloc.lower()
@@ -54,12 +33,35 @@ def is_valid_domain(link):
     domain = urlparse(link).netloc.lower()
     return not any(ex in domain for ex in EXCLUDE_DOMAINS)
 
-# Streamlit app
 st.title("Retailer Website Finder with Merchant Matching")
 
-uploaded_file = st.file_uploader("Upload a CSV or Excel file with company names", type=["csv", "xlsx"])
+# Upload merchant list
+merchant_file = st.file_uploader("Upload Merchant List (Excel)", type=["xlsx"])
+merchant_names_cleaned = []
 
-if uploaded_file:
+if merchant_file:
+    merchant_df = pd.read_excel(merchant_file, sheet_name=None, engine="openpyxl")
+    merchant_names = set()
+    for sheet in merchant_df.values():
+        merchant_names.update(sheet.iloc[:, 0].dropna().astype(str).tolist())
+    merchant_names_cleaned = [clean_name(name) for name in merchant_names]
+    st.success(f"Merchant list loaded with {len(merchant_names_cleaned)} entries.")
+
+def find_best_match(name):
+    name_clean = clean_name(name)
+    best_score = 0
+    best_match = name
+    for merchant in merchant_names_cleaned:
+        score = similarity(name_clean, merchant)
+        if score > best_score:
+            best_score = score
+            best_match = merchant
+    return best_match, best_score
+
+# Upload company list
+uploaded_file = st.file_uploader("Upload Company List (CSV or Excel)", type=["csv", "xlsx"])
+
+if uploaded_file and merchant_names_cleaned:
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
     else:
