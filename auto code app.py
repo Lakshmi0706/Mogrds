@@ -3,9 +3,9 @@ import pandas as pd
 import requests
 from io import BytesIO
 
-# Load secrets
-API_KEY = st.secrets["API_KEY"]
-CX = st.secrets["CX"]
+# Your credentials (hardcoded for now)
+API_KEY = "AIzaSyBYS2Qsc6rES4sKtr3wcz-74V5leOgJaV4"
+CX = "e2eddc6d351e647af"
 
 st.title("Company Website Finder + Google Search")
 
@@ -53,7 +53,7 @@ if uploaded_file:
 # --- Embedded Google Search Box ---
 st.header("Manual Google Search")
 html_code = """
-https://cse.google.com/cse.js?cx=e2eddc6d351e647af</script>
+<script async srce.com/cse.js?cx=e2eddc6d351e647af</script>
 <div class="gcse-search"></div>
 """
 st.components.v1.html(html_code, height=600)
