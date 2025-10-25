@@ -1,116 +1,39 @@
 import streamlit as st
 import pandas as pd
-from urllib.parse import urlparse
-from collections import Counter
-import difflib
-import time
-import random
-import re
-from googleapiclient.discovery import build
+import urllib.parse
+from io import BytesIO
 
-# --- BRAND SEED ---
-BRAND_SEED = {
-    "DOLLAR TREE": {"retailer": "dollartree.com", "logo_source": "https://www.dollartree.com/sites/g/files/qyckzh1461/files/media/images/logo/dollartree-logo.png"},
-    "MURPHY USA": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
-    "FIVE BELOW": {"retailer": "fivebelow.com", "logo_source": "https://www.fivebelow.com/logo.png"},
-}
+EXCLUDED_SITES = ['wikipedia.org', 'facebook.com', 'instagram.com', 'google.com/maps', 'justdial.com']
 
-KNOWN_DOMAINS = [entry["retailer"] for entry in BRAND_SEED.values()]
+st.title("Retailer Site Finder via Google Search")
 
-# --- Google Custom Search Setup (Hardcoded Keys) ---
-@st.cache_resource
-def get_custom_search_service():
-    api_key = "AIzaSyBYS2Qsc6rES4sKtr3wcz-74V5leOgJaV4"  # Your API Key
-    cse_id = "2eddc6d351e647af"  # Your Search Engine ID
-    service = build("customsearch", "v1", developerKey=api_key)
-    return service, cse_id
-
-def web_search_for_retailer(description, service, cse_id):
-    query = f'"{description}" retailer site'
-    try:
-        res = service.cse().list(q=query, cx=cse_id, num=1).execute()
-        items = res.get("items", [])
-        if items:
-            top_url = items[0]["link"]
-            top_domain = urlparse(top_url).netloc.replace("www.", "")
-            for known in KNOWN_DOMAINS:
-                if known in top_domain or top_domain in known:
-                    return known
-        return None
-    except Exception as e:
-        st.warning(f"Search error for '{description}': {e}. Skipping override.")
-        return None
-
-# --- Cleaning & Matching ---
-def clean_description(description):
-    cleaned = re.sub(r'\d+', '', description.upper().strip())
-    cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|INSTORE|PICKUP|ONLINE|\.COM|ACCOUNT SCRAPING|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG)\s+', ' ', cleaned)
-    return ' '.join(cleaned.split())
-
-def find_brand_match(description):
-    orig_desc = description.upper().strip()
-    cleaned_desc = clean_description(description)
-    if orig_desc in BRAND_SEED:
-        return BRAND_SEED[orig_desc]
-    matches = difflib.get_close_matches(orig_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.6)
-    if matches:
-        return BRAND_SEED[matches[0]]
-    matches = difflib.get_close_matches(cleaned_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.6)
-    if matches:
-        return BRAND_SEED[matches[0]]
-    return {"retailer": "Not found", "logo_source": None}
-
-def get_domain(url):
-    if url == "Not found" or not url:
-        return None
-    try:
-        domain = urlparse(url).netloc.replace("www.", "")
-        if domain.endswith(".com"):
-            return domain[:-4]
-        elif domain.endswith(".us"):
-            return domain[:-3]
-        return domain
-    except:
-        return None
-
-def get_clean_domains(links_or_sources):
-    domains = []
-    skip_these = ["facebook", "instagram", "twitter", "linkedin", "youtube", "reddit", "tiktok", "wikipedia", "forbes", "bloomberg", "cnn", "wsj", "nytimes", "yelp", "tripadvisor", "mapquest", "google", "apple", "microsoft"]
-    for link in links_or_sources:
-        domain = get_domain(link)
-        if domain and not any(skip in domain.lower() for skip in skip_these):
-            domains.append(domain)
-    return domains
-
-def analyze_domain_uniqueness(domains):
-    if not domains:
-        return "Not found", "No"
-    domain_counts = Counter(domains)
-    most_common_list = domain_counts.most_common(2)
-    top_domain, top_count = most_common_list[0]
-    is_dominant = "Yes" if top_count > 0 and (len(most_common_list) == 1 or top_count > most_common_list[1][1]) else "No"
-    return top_domain, is_dominant
-
-# --- Streamlit UI ---
-st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
-st.title("🧠 Intelligent Brand Validator")
-st.caption("Validates with exact match, fuzzy fallback, and Google Custom Search for accurate 'retailer site' verification.")
-
-st.header("1. Upload Your File")
-uploaded_file = st.file_uploader("Your CSV must have a 'description' column.", type=["csv"])
+uploaded_file = st.file_uploader("Upload Excel file with 'S No' and 'Description' columns", type=["xlsx"])
 
 if uploaded_file:
-    try:
-        df = pd.read_csv(uploaded_file)
-        if 'description' not in df.columns:
-            st.error("Upload failed! The CSV must contain a 'description' column.", icon="🚨")
-            st.stop()
-        
-        st.success(f"File uploaded! Found {len(df)} brands to analyze.")
-        
-        service, cse_id = get_custom_search_service()
-        
-        st.header("2. Start Analysis")
-        start_btn = st.button("Validate Brand Presence", type="primary", use_container_width=True)
-        
-       
+    df = pd.read_excel(uploaded_file, engine='openpyxl')
+    df['Status'] = ''
+    df['Retailer Name'] = ''
+
+    st.write("### Instructions")
+    st.write("Click the search links below to manually verify each description. After verification, update the status and retailer name.")
+
+    for index, row in df.iterrows():
+        description = row['Description']
+        query = urllib.parse.quote(description)
+        search_url = f"https://www.google.com/search?q={query}"
+        st.markdown(f"**{row['S No']} - {description}**")
+        st.markdown(f"{search_url}")
+        status = st.selectbox(f"Status for '{description}'", ["", "OK"], key=f"status_{index}")
+        retailer = st.text_input(f"Retailer Name for '{description}'", key=f"retailer_{index}")
+        df.at[index, 'Status'] = status
+        df.at[index, 'Retailer Name'] = retailer
+        st.markdown("---")
+
+    output = BytesIO()
+    df.to_excel(output, index=False, engine='openpyxl')
+    st.download_button(
+        label="Download Results",
+        data=output.getvalue(),
+        file_name="retailer_results.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
