@@ -119,7 +119,13 @@ def get_domain(url):
     if url == "Not found" or not url:
         return None
     try:
-        return urlparse(url).netloc.replace("www.", "")
+        domain = urlparse(url).netloc.replace("www.", "")
+        # Extract the base retailer name by removing ".com" and similar TLDs
+        if domain.endswith(".com"):
+            return domain[:-4].replace("-", " ").title()
+        elif domain.endswith(".us"):
+            return domain[:-3].replace("-", " ").title()
+        return domain.replace("-", " ").title()
     except:
         return None
 
