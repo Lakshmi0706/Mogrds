@@ -2,80 +2,62 @@ import streamlit as st
 import pandas as pd
 from urllib.parse import urlparse
 from collections import Counter
-import difflib  # For fuzzy matching
+import difflib
 import time
 import random
-import re  # For cleaning
-from googleapiclient.discovery import build  # For Google Custom Search API
+import re
+from googleapiclient.discovery import build
 
-# Expanded BRAND_SEED based on quick tests (add more from your data)
+# --- BRAND SEED ---
 BRAND_SEED = {
     "DOLLAR TREE": {"retailer": "dollartree.com", "logo_source": "https://www.dollartree.com/sites/g/files/qyckzh1461/files/media/images/logo/dollartree-logo.png"},
     "MURPHY USA": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
     "FIVE BELOW": {"retailer": "fivebelow.com", "logo_source": "https://www.fivebelow.com/logo.png"},
-    # Example for "FOOD FUEL" from test (uncomment/add if needed)
-    # "FOOD FUEL": {"retailer": "foodfuels.com", "logo_source": "https://www.foodfuels.com/logo.png"},
-    # Add your original entries here, e.g.,
-    # "SHELL": {"retailer": "shell.us", "logo_source": "https://www.shell.us/logo.jpg"},
-    # "RACETROC": {"retailer": "racetrac.com", "logo_source": "https://www.racetrac.com/logo.svg"},
 }
 
-# Known retailer domains for matching
 KNOWN_DOMAINS = [entry["retailer"] for entry in BRAND_SEED.values()]
 
-# Google Custom Search setup (cached for efficiency)
+# --- Google Custom Search Setup (Hardcoded Keys) ---
 @st.cache_resource
 def get_custom_search_service():
-    api_key = st.secrets.get("GOOGLE_API_KEY", None)
-    cse_id = st.secrets.get("SEARCH_ENGINE_ID", None)
-    if not api_key or not cse_id:
-        st.error("Add GOOGLE_API_KEY and SEARCH_ENGINE_ID to .streamlit/secrets.toml")
-        st.stop()
+    api_key = "AIzaSyBYS2Qsc6rES4sKtr3wcz-74V5leOgJaV4"  # Your API Key
+    cse_id = "2eddc6d351e647af"  # Your Search Engine ID
     service = build("customsearch", "v1", developerKey=api_key)
     return service, cse_id
 
 def web_search_for_retailer(description, service, cse_id):
-    """
-    Performs a real Google Custom Search for '{description} retailer site' and returns the top domain if it matches a known retailer.
-    """
     query = f'"{description}" retailer site'
     try:
-        res = service.cse().list(q=query, cx=cse_id, num=1).execute()  # Get top 1 result
+        res = service.cse().list(q=query, cx=cse_id, num=1).execute()
         items = res.get("items", [])
         if items:
             top_url = items[0]["link"]
             top_domain = urlparse(top_url).netloc.replace("www.", "")
-            # Check if top_domain contains or matches a known retailer domain
             for known in KNOWN_DOMAINS:
                 if known in top_domain or top_domain in known:
-                    return known  # Return the full known domain for mapping
+                    return known
         return None
     except Exception as e:
         st.warning(f"Search error for '{description}': {e}. Skipping override.")
         return None
 
-# Enhanced cleaning (fallback only)
+# --- Cleaning & Matching ---
 def clean_description(description):
     cleaned = re.sub(r'\d+', '', description.upper().strip())
     cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|INSTORE|PICKUP|ONLINE|\.COM|ACCOUNT SCRAPING|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG)\s+', ' ', cleaned)
     return ' '.join(cleaned.split())
 
-# Fuzzy matching (fallback)
 def find_brand_match(description):
     orig_desc = description.upper().strip()
     cleaned_desc = clean_description(description)
-    
     if orig_desc in BRAND_SEED:
         return BRAND_SEED[orig_desc]
-    
     matches = difflib.get_close_matches(orig_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.6)
     if matches:
         return BRAND_SEED[matches[0]]
-    
     matches = difflib.get_close_matches(cleaned_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.6)
     if matches:
         return BRAND_SEED[matches[0]]
-    
     return {"retailer": "Not found", "logo_source": None}
 
 def get_domain(url):
@@ -103,17 +85,14 @@ def get_clean_domains(links_or_sources):
 def analyze_domain_uniqueness(domains):
     if not domains:
         return "Not found", "No"
-    
     domain_counts = Counter(domains)
     most_common_list = domain_counts.most_common(2)
     top_domain, top_count = most_common_list[0]
-    
     is_dominant = "Yes" if top_count > 0 and (len(most_common_list) == 1 or top_count > most_common_list[1][1]) else "No"
     return top_domain, is_dominant
 
-# --- Streamlit App UI ---
+# --- Streamlit UI ---
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
-
 st.title("🧠 Intelligent Brand Validator")
 st.caption("Validates with exact match, fuzzy fallback, and Google Custom Search for accurate 'retailer site' verification.")
 
@@ -129,7 +108,6 @@ if uploaded_file:
         
         st.success(f"File uploaded! Found {len(df)} brands to analyze.")
         
-        # Get Google service
         service, cse_id = get_custom_search_service()
         
         st.header("2. Start Analysis")
@@ -146,7 +124,6 @@ if uploaded_file:
                     description = str(row['description'])
                     status_text.text(f"Processing {idx + 1}/{total}: {description[:50]}...")
                     
-                    # PASS 1: Exact match
                     orig_desc = description.upper().strip()
                     if orig_desc in BRAND_SEED:
                         brand_info = BRAND_SEED[orig_desc]
@@ -155,7 +132,6 @@ if uploaded_file:
                         final_status = "No"
                         brand_info = {"retailer": "Not found", "logo_source": None}
                     
-                    # PASS 2: Fuzzy fallback
                     if final_status == "No":
                         brand_info = find_brand_match(description)
                         web_domains = get_clean_domains([brand_info["retailer"]]) if brand_info["retailer"] != "Not found" else []
@@ -166,42 +142,6 @@ if uploaded_file:
                     
                     top_retailer = get_domain(brand_info["retailer"]) if brand_info["retailer"] != "Not found" else "Not found"
                     
-                    # PASS 3: Google Custom Search Override if "No"
                     if final_status == "No":
                         search_domain = web_search_for_retailer(description, service, cse_id)
-                        if search_domain:
-                            top_retailer = get_domain(search_domain)
-                            final_status = "Yes"
-                            st.info(f"Google Search Override: '{description}' matched '{top_retailer}' (top result domain: {search_domain}).")
-                    
-                    # Final fallback
-                    if top_retailer == "Not found" and brand_info.get("logo_source"):
-                        top_retailer = get_domain(brand_info["logo_source"])
-                    
-                    results.append({'retailer': top_retailer, 'status': final_status})
-                    
-                    progress_bar.progress((idx + 1) / total)
-                    if idx < total - 1:
-                        time.sleep(random.uniform(0.5, 1.0))
-                
-                status_text.success("Analysis Complete!", icon="🎉")
-            
-            results_df = pd.DataFrame(results)
-            df['retailer'] = results_df['retailer']
-            df['status'] = results_df['status']
-            
-            st.header("3. Results")
-            st.markdown("status is 'Yes' if exact/fuzzy/Google search matches a known official site.")
-            st.dataframe(df, use_container_width=True)
-            
-            dominant_count = (df['status'] == 'Yes').sum()
-            st.metric("Brands with a Unique Presence", f"{dominant_count} / {total}")
-            
-            csv_data = df.to_csv(index=False).encode('utf-8')
-            st.download_button("Download Results", csv_data, "brand_validator_results.csv", "text/csv", use_container_width=True)
-    
-    except Exception as e:
-        st.error(f"An unexpected error occurred: {e}", icon="🔥")
-
-else:
-    st.info("Please upload a CSV file to get started. Ensure GOOGLE_API_KEY and SEARCH_ENGINE_ID are in secrets.toml.")
+                       
