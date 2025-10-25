@@ -7,7 +7,64 @@ import time
 import random
 import re  # For cleaning
 
-# Updated seed dataset with new merchant names from document
+# Domain to display name mapping for better retailer names
+DOMAIN_TO_NAME = {
+    "cashwisefoods.com": "Cash Wise Foods",
+    "murphyusa.com": "Murphy USA",
+    "samsclub.com": "Sam's Club",
+    "racetrac.com": "RaceTrac",
+    "bathandbodyworks.com": "Bath & Body Works",
+    "costco.com": "Costco",
+    "familyfare.com": "Family Fare",
+    "fredmeyer.com": "Fred Meyer",
+    "homedepot.com": "Home Depot",
+    "hyvee.com": "Hy-Vee",
+    "wincofoods.com": "WinCo Foods",
+    "stclair.com": "St. Clair",
+    "albertsons.com": "Albertsons",
+    "marathonpetroleum.com": "Marathon Petroleum",
+    "circlek.com": "Circle K",
+    "shell.us": "Shell",
+    "pricechopper.com": "Price Chopper",
+    "dollartree.com": "Dollar Tree",
+    "target.com": "Target",
+    "walmart.com": "Walmart",
+    "kroger.com": "Kroger",
+    "dollargeneral.com": "Dollar General",
+    "familydollar.com": "Family Dollar",
+    "lowes.com": "Lowe's",
+    "safeway.com": "Safeway",
+    "meijer.com": "Meijer",
+    "shoprite.com": "ShopRite",
+    "speedway.com": "Speedway",
+    "caseys.com": "Casey's General Store",
+    "stopandshop.com": "Stop & Shop",
+    "wawa.com": "Wawa",
+    "bjs.com": "BJ's Wholesale Club",
+    "sheetz.com": "Sheetz",
+    "winndixie.com": "Winn-Dixie",
+    "traderjoes.com": "Trader Joe's",
+    "walgreens.com": "Walgreens",
+    "acehardware.com": "Ace Hardware",
+    "kwiktrip.com": "Kwik Trip",
+    "foodlion.com": "Food Lion",
+    "ulta.com": "Ulta Beauty",
+    "7-eleven.com": "7-Eleven",
+    "cvs.com": "CVS Pharmacy",
+    "publix.com": "Publix",
+    "wholefoodsmarket.com": "Whole Foods Market",
+    "totalwine.com": "Total Wine & More",
+    "petco.com": "Petco",
+    "instacart.com": "Instacart",
+    "amazon.com": "Amazon",
+    "heb.com": "HEB",
+    "chewy.com": "Chewy",
+    "sunoco.com": "Sunoco",
+    "chevron.com": "Chevron",
+    # Add more as needed
+}
+
+# Updated seed dataset with additional entries for better fuzzy matching (e.g., for Sunoco and Chevron)
 BRAND_SEED = {
     "CASH CHECK WISE INCREDIBLY FRIENDLY": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
     "MURPHY EXPRESS": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
@@ -26,7 +83,8 @@ BRAND_SEED = {
     "THD HD POT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
     "THE HOME DEPOT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
     "HOME DEPOT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
-    "CRAN HY SUCCO": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},
+    "CRAN HY SUCCO": {"retailer": "sunoco.com", "logo_source": "https://www.sunoco.com/images/logo.png"},  # Added for Crain Hwy Sunoco
+    "SUNOCO": {"retailer": "sunoco.com", "logo_source": "https://www.sunoco.com/images/logo.png"},
     "WINCY FOODS": {"retailer": "wincofoods.com", "logo_source": "https://www.wincofoods.com/logo.svg"},
     "SIN CLAIRE": {"retailer": "stclair.com", "logo_source": "https://www.stclair.com/logo.png"},
     "HOMDA POT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
@@ -86,13 +144,28 @@ BRAND_SEED = {
     "AMAZON ONLINE": {"retailer": "amazon.com", "logo_source": "https://www.amazon.com/logo.png"},
     "HEB .COM": {"retailer": "heb.com", "logo_source": "https://www.heb.com/logo.png"},
     "CHEWY ONLINE": {"retailer": "chewy.com", "logo_source": "https://www.chewy.com/logo.png"},
+    # Added for Chevron mismatches
+    "CHEVRON": {"retailer": "chevron.com", "logo_source": "https://www.chevron.com/-/media/chevron/corporate/images/logo/chevron-logo.svg"},
+    "RELLY KORNER CHEVRON": {"retailer": "chevron.com", "logo_source": "https://www.chevron.com/-/media/chevron/corporate/images/logo/chevron-logo.svg"},
+    "KORNER CHEVRON": {"retailer": "chevron.com", "logo_source": "https://www.chevron.com/-/media/chevron/corporate/images/logo/chevron-logo.svg"},
+    "CHEVRON FRESH": {"retailer": "chevron.com", "logo_source": "https://www.chevron.com/-/media/chevron/corporate/images/logo/chevron-logo.svg"},
 }
 
 # Enhanced cleaning to handle noise
 def clean_description(description):
     cleaned = re.sub(r'\d+', '', description.upper().strip())  # Remove numbers
-    cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|INSTORE|PICKUP|ONLINE|\.COM|ACCOUNT SCRAPING|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG)\s+', ' ', cleaned)
+    cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|INSTORE|PICKUP|ONLINE|\.COM|ACCOUNT SCRAPING|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG|KORNER|RELLY)\s+', ' ', cleaned)
     return ' '.join(cleaned.split())  # Normalize spaces
+
+# Function to get display name from URL/domain
+def get_retailer_name(url):
+    if not url or url == "Not found":
+        return "Not found"
+    try:
+        domain = urlparse(url).netloc.replace("www.", "")
+        return DOMAIN_TO_NAME.get(domain, domain.replace("-", " ").title())
+    except:
+        return "Not found"
 
 # Basic fuzzy matching function
 def find_brand_match(description):
@@ -115,54 +188,18 @@ def find_brand_match(description):
     
     return {"retailer": "Not found", "logo_source": None}
 
-def get_domain(url):
-    if url == "Not found" or not url:
-        return None
-    try:
-        domain = urlparse(url).netloc.replace("www.", "")
-        # Extract the base retailer name by removing ".com" and similar TLDs
-        if domain.endswith(".com"):
-            return domain[:-4].replace("-", " ").title()
-        elif domain.endswith(".us"):
-            return domain[:-3].replace("-", " ").title()
-        return domain.replace("-", " ").title()
-    except:
-        return None
-
-def get_clean_domains(links_or_sources):
-    """Extract and clean domains, filtering out non-retail sites."""
-    domains = []
-    skip_these = [
-        "facebook", "instagram", "twitter", "linkedin", "youtube", "reddit", "tiktok",
-        "wikipedia", "forbes", "bloomberg", "cnn", "wsj", "nytimes", "yelp",
-        "tripadvisor", "mapquest", "google", "apple", "microsoft"
-    ]
-    for link in links_or_sources:
-        domain = get_domain(link)
-        if domain and not any(skip in domain.lower() for skip in skip_these):
-            domains.append(domain)
-    return domains
-
-def analyze_domain_uniqueness(domains):
-    """Determines the top domain and if it's a unique, clear winner with relaxed criteria."""
-    if not domains:
-        return "Not found", "No"
-    
-    domain_counts = Counter(domains)
-    most_common_list = domain_counts.most_common(2)
-    top_domain, top_count = most_common_list[0]
-    
-    is_dominant = "No"
-    if top_count > 0:  # Relaxed condition to accept any domain with at least one occurrence
-        is_dominant = "Yes" if len(most_common_list) == 1 or top_count > most_common_list[1][1] else "Yes"
-    return top_domain, is_dominant
+# Simplified uniqueness analysis since we're dealing with single sources mostly
+def analyze_source(source_url):
+    if source_url and source_url != "Not found":
+        return get_retailer_name(source_url), "Yes"
+    return "Not found", "No"
 
 # --- Streamlit App UI ---
 
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Validates brand presence using fuzzy matching on an expanded seed dataset (no API required).")
+st.caption("Validates brand presence using fuzzy matching on an expanded seed dataset (no API required). Improved with better seed entries and display names.")
 
 st.header("1. Upload Your File")
 uploaded_file = st.file_uploader("Your CSV must have a 'description' column.", type=["csv"])
@@ -193,33 +230,29 @@ if uploaded_file:
                     # --- TWO-PASS LOGIC ---
                     # PASS 1: Direct fuzzy match
                     brand_info = find_brand_match(description)
-                    web_domains = get_clean_domains([brand_info["retailer"]]) if brand_info["retailer"] != "Not found" else []
-                    top_retailer, web_status = analyze_domain_uniqueness(web_domains)
-
-                    logo_domains = get_clean_domains([brand_info["logo_source"]]) if brand_info["logo_source"] else []
-                    top_logo_source, image_status = analyze_domain_uniqueness(logo_domains)
+                    top_retailer_web, web_status = analyze_source(brand_info["retailer"])
+                    top_retailer_logo, image_status = analyze_source(brand_info["logo_source"])
 
                     final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
+                    top_retailer = top_retailer_web if web_status == "Yes" else top_retailer_logo
                     
                     # PASS 2: If failed, clean and re-match
                     if final_status == "No":
                         cleaned_desc = clean_description(description)
-                        if cleaned_desc != description.upper().strip():
+                        if cleaned_desc != description.upper().strip() and cleaned_desc != orig_desc:
                             status_text.text(f"Correcting to '{cleaned_desc}' and re-matching...")
                             time.sleep(0.5)
                             brand_info = find_brand_match(cleaned_desc)
-                            web_domains = get_clean_domains([brand_info["retailer"]]) if brand_info["retailer"] != "Not found" else []
-                            top_retailer, web_status = analyze_domain_uniqueness(web_domains)
-
-                            logo_domains = get_clean_domains([brand_info["logo_source"]]) if brand_info["logo_source"] else []
-                            top_logo_source, image_status = analyze_domain_uniqueness(logo_domains)
+                            top_retailer_web, web_status = analyze_source(brand_info["retailer"])
+                            top_retailer_logo, image_status = analyze_source(brand_info["logo_source"])
                             
                             final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
+                            top_retailer = top_retailer_web if web_status == "Yes" else top_retailer_logo
                     
-                    # Final fallback
-                    if top_retailer == "Not found" and top_logo_source != "Not found":
-                        top_retailer = top_logo_source
-                        
+                    # Ensure top_retailer is set properly
+                    if top_retailer == "Not found":
+                        top_retailer = top_retailer_logo if image_status == "Yes" else "Not found"
+                    
                     results.append({'retailer': top_retailer, 'status': final_status})
                     
                     progress_bar.progress((idx + 1) / total)
