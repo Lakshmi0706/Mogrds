@@ -1,4 +1,3 @@
-duckduckgo_search
-request
-beautifulsoup4
-lxml
+streamlit
+pandas
+google-api-python-client
