@@ -2,3 +2,7 @@ streamlit
 pandas
 requests
 openpyxl
+duckduckgo_search
+request
+beautifulsoup4
+lxml
