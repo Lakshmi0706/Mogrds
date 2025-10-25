@@ -1,4 +1,20 @@
-import streamlit as st
+[4:40 PM, 10/25/2025] Sai Lakshmi✨: import streamlit as st
+import pandas as pd
+from urllib.parse import urlparse
+from collections import Counter
+import difflib  # For fuzzy matching
+import time
+import random
+import re  # For cleaning
+
+# Updated seed dataset with new merchant names from document
+BRAND_SEED = {
+    "CASH CHECK WISE INCREDIBLY FRIENDLY": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
+    "MURPHY EXPRESS": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
+    "SON'S CLUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},
+    "SQMS CUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},
+    "SAMS CLUB": {"retailer": "samsclub.com", "logo_so…
+[4:53 PM, 10/25/2025] Sai Lakshmi✨: import streamlit as st
 import pandas as pd
 from urllib.parse import urlparse
 from collections import Counter
@@ -26,7 +42,8 @@ BRAND_SEED = {
     "THD HD POT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
     "THE HOME DEPOT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
     "HOME DEPOT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
-    "CRAN HY SUCCO": {"retailer": "hyvee.com", "logo_source": "https://www.hyvee.com/logo.svg"},
+    "CRAN HY SUCCO": {"retailer": "sunoco.com", "logo_source": "https://www.sunoco.com/images/logo.png"},  # Updated for Crain Hwy Sunoco
+    "SUNOCO": {"retailer": "sunoco.com", "logo_source": "https://www.sunoco.com/images/logo.png"},
     "WINCY FOODS": {"retailer": "wincofoods.com", "logo_source": "https://www.wincofoods.com/logo.svg"},
     "SIN CLAIRE": {"retailer": "stclair.com", "logo_source": "https://www.stclair.com/logo.png"},
     "HOMDA POT": {"retailer": "homedepot.com", "logo_source": "https://www.homedepot.com/logo.svg"},
@@ -119,7 +136,13 @@ def get_domain(url):
     if url == "Not found" or not url:
         return None
     try:
-        return urlparse(url).netloc.replace("www.", "")
+        domain = urlparse(url).netloc.replace("www.", "")
+        # Remove .com or .us to get base retailer name
+        if domain.endswith(".com"):
+            return domain[:-4]
+        elif domain.endswith(".us"):
+            return domain[:-3]
+        return domain
     except:
         return None
 
@@ -156,7 +179,7 @@ def analyze_domain_uniqueness(domains):
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Validates brand presence using fuzzy matching on an expanded seed dataset (no API required).")
+st.caption("Validates brand presence using fuzzy matching on an expanded seed dataset. Suggests Google verification for accuracy.")
 
 st.header("1. Upload Your File")
 uploaded_file = st.file_uploader("Your CSV must have a 'description' column.", type=["csv"])
@@ -210,10 +233,15 @@ if uploaded_file:
                             
                             final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
                     
-                    # Final fallback
+                    # Final fallback and manual verification suggestion
                     if top_retailer == "Not found" and top_logo_source != "Not found":
                         top_retailer = top_logo_source
-                        
+                    elif top_retailer in ["hyvee", "Not found"] and "sunoco" in description.lower():
+                        top_retailer = "sunoco"  # Manual override based on your Google insight
+                        st.warning(f"Manual verification suggested for '{description}': Google search may confirm 'sunoco' as the official site.")
+                    elif top_retailer == "Not found":
+                        st.warning(f"Manual verification suggested for '{description}': Please search Google for the official retailer site.")
+                    
                     results.append({'retailer': top_retailer, 'status': final_status})
                     
                     progress_bar.progress((idx + 1) / total)
@@ -227,7 +255,7 @@ if uploaded_file:
             df['status'] = results_df['status']
             
             st.header("3. Results")
-            st.markdown("status is 'Yes' if a unique website or logo was found (fuzzy-corrected from expanded seed).")
+            st.markdown("status is 'Yes' if a unique website or logo was found (fuzzy-corrected from expanded seed). * indicates manual Google verification is recommended.")
             st.dataframe(df, use_container_width=True)
             
             dominant_count = (df['status'] == 'Yes').sum()
