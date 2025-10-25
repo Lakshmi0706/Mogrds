@@ -144,4 +144,39 @@ if uploaded_file:
                     
                     if final_status == "No":
                         search_domain = web_search_for_retailer(description, service, cse_id)
-                       
+                        if search_domain:
+                            top_retailer = get_domain(search_domain)
+                            final_status = "Yes"
+                            st.info(f"Google Search Override: '{description}' matched '{top_retailer}' (top result domain: {search_domain}).")
+                    
+                    if top_retailer == "Not found" and brand_info.get("logo_source"):
+                        top_retailer = get_domain(brand_info["logo_source"])
+                    
+                    results.append({'retailer': top_retailer, 'status': final_status})
+                    
+                    progress_bar.progress((idx + 1) / total)
+                    if idx < total - 1:
+                        time.sleep(random.uniform(0.5, 1.0))
+                
+                status_text.success("Analysis Complete!", icon="🎉")
+            
+            results_df = pd.DataFrame(results)
+            df['retailer'] = results_df['retailer']
+            df['status'] = results_df['status']
+            
+            st.header("3. Results")
+            st.markdown("status is 'Yes' if exact/fuzzy/Google search matches a known official site.")
+            st.dataframe(df, use_container_width=True)
+            
+            dominant_count = (df['status'] == 'Yes').sum()
+            st.metric("Brands with a Unique Presence", f"{dominant_count} / {total}")
+            
+            csv_data = df.to_csv(index=False).encode('utf-8')
+            st.download_button("Download Results", csv_data, "brand_validator_results.csv", "text/csv", use_container_width=True)
+    
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {e}", icon="🔥")
+
+else:
+    st.info("Please upload a CSV file to get started.")
+``
