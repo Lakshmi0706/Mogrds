@@ -1,20 +1,4 @@
-[4:40 PM, 10/25/2025] Sai Lakshmi✨: import streamlit as st
-import pandas as pd
-from urllib.parse import urlparse
-from collections import Counter
-import difflib  # For fuzzy matching
-import time
-import random
-import re  # For cleaning
-
-# Updated seed dataset with new merchant names from document
-BRAND_SEED = {
-    "CASH CHECK WISE INCREDIBLY FRIENDLY": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
-    "MURPHY EXPRESS": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
-    "SON'S CLUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},
-    "SQMS CUB": {"retailer": "samsclub.com", "logo_source": "https://www.samsclub.com/logo.svg"},
-    "SAMS CLUB": {"retailer": "samsclub.com", "logo_so…
-[4:53 PM, 10/25/2025] Sai Lakshmi✨: import streamlit as st
+import streamlit as st
 import pandas as pd
 from urllib.parse import urlparse
 from collections import Counter
