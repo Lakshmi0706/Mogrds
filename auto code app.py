@@ -6,60 +6,72 @@ import difflib  # For fuzzy matching
 import time
 import random
 import re  # For cleaning
-import requests  # For web search simulation
+from googleapiclient.discovery import build  # For Google Custom Search API
 
-# Original seed dataset (unchanged)
+# Expanded BRAND_SEED based on quick tests (add more from your data)
 BRAND_SEED = {
-    "CASH CHECK WISE INCREDIBLY FRIENDLY": {"retailer": "cashwisefoods.com", "logo_source": "https://www.cashwisefoods.com/logo.png"},
-    # ... (all other entries from the previous code remain the same)
     "DOLLAR TREE": {"retailer": "dollartree.com", "logo_source": "https://www.dollartree.com/sites/g/files/qyckzh1461/files/media/images/logo/dollartree-logo.png"},
-    "SHELL": {"retailer": "shell.us", "logo_source": "https://www.shell.us/logo.jpg"},
-    "RACETROC": {"retailer": "racetrac.com", "logo_source": "https://www.racetrac.com/logo.svg"},
-    # Add more as needed
+    "MURPHY USA": {"retailer": "murphyusa.com", "logo_source": "https://www.murphyusa.com/logo.svg"},
+    "FIVE BELOW": {"retailer": "fivebelow.com", "logo_source": "https://www.fivebelow.com/logo.png"},
+    # Example for "FOOD FUEL" from test (uncomment/add if needed)
+    # "FOOD FUEL": {"retailer": "foodfuels.com", "logo_source": "https://www.foodfuels.com/logo.png"},
+    # Add your original entries here, e.g.,
+    # "SHELL": {"retailer": "shell.us", "logo_source": "https://www.shell.us/logo.jpg"},
+    # "RACETROC": {"retailer": "racetrac.com", "logo_source": "https://www.racetrac.com/logo.svg"},
 }
 
-# Known retailer domains for web search matching (extracted from BRAND_SEED)
+# Known retailer domains for matching
 KNOWN_DOMAINS = [entry["retailer"] for entry in BRAND_SEED.values()]
 
-# Placeholder web search function (simulate Google search; replace with SerpAPI or similar for production)
-def web_search_for_retailer(description):
-    """
-    Simulates a web search for 'description retailer site' and returns the top result's domain if it matches a known retailer.
-    In production, use a real API like SerpAPI: https://serpapi.com/google-search-api
-    """
-    query = f"{description} retailer site"
-    # Simulated API call (replace with real API)
-    # Example using a free proxy or mock; in real code: response = requests.get(f"https://serpapi.com/search?engine=google&q={query}&api_key=YOUR_KEY")
-    # For demo, return None or mock based on known cases
-    mock_results = {
-        "ronshell": "shell.us",  # Based on local Shell stations
-        "rgcetrac": "racetrac.com",  # Strong match to RaceTrac
-        "kyos": None,  # No strong match
-        "urder 90": None,  # No match
-    }
-    return mock_results.get(description.lower(), None)
+# Google Custom Search setup (cached for efficiency)
+@st.cache_resource
+def get_custom_search_service():
+    api_key = st.secrets.get("GOOGLE_API_KEY", None)
+    cse_id = st.secrets.get("SEARCH_ENGINE_ID", None)
+    if not api_key or not cse_id:
+        st.error("Add GOOGLE_API_KEY and SEARCH_ENGINE_ID to .streamlit/secrets.toml")
+        st.stop()
+    service = build("customsearch", "v1", developerKey=api_key)
+    return service, cse_id
 
-# Enhanced cleaning to handle noise (used only as fallback)
+def web_search_for_retailer(description, service, cse_id):
+    """
+    Performs a real Google Custom Search for '{description} retailer site' and returns the top domain if it matches a known retailer.
+    """
+    query = f'"{description}" retailer site'
+    try:
+        res = service.cse().list(q=query, cx=cse_id, num=1).execute()  # Get top 1 result
+        items = res.get("items", [])
+        if items:
+            top_url = items[0]["link"]
+            top_domain = urlparse(top_url).netloc.replace("www.", "")
+            # Check if top_domain contains or matches a known retailer domain
+            for known in KNOWN_DOMAINS:
+                if known in top_domain or top_domain in known:
+                    return known  # Return the full known domain for mapping
+        return None
+    except Exception as e:
+        st.warning(f"Search error for '{description}': {e}. Skipping override.")
+        return None
+
+# Enhanced cleaning (fallback only)
 def clean_description(description):
-    cleaned = re.sub(r'\d+', '', description.upper().strip())  # Remove numbers
+    cleaned = re.sub(r'\d+', '', description.upper().strip())
     cleaned = re.sub(r'\s+(?:INCREDIBLY FRIENDLY|WISE|CHECK|HD|THD|CO|MEYER|EXPRESS|INSTORE|PICKUP|ONLINE|\.COM|ACCOUNT SCRAPING|AUGUSTINE|SHEL|SHELL|VE|HY|SUCCO|BROWNSBURG)\s+', ' ', cleaned)
-    return ' '.join(cleaned.split())  # Normalize spaces
+    return ' '.join(cleaned.split())
 
-# Basic fuzzy matching function (used as fallback)
+# Fuzzy matching (fallback)
 def find_brand_match(description):
     orig_desc = description.upper().strip()
     cleaned_desc = clean_description(description)
     
-    # Direct exact match on original description
     if orig_desc in BRAND_SEED:
         return BRAND_SEED[orig_desc]
     
-    # Fallback: Fuzzy match on original
-    matches = difflib.get_close_matches(orig_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.6)  # Increased cutoff for precision
+    matches = difflib.get_close_matches(orig_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.6)
     if matches:
         return BRAND_SEED[matches[0]]
     
-    # Fallback: Fuzzy on cleaned description
     matches = difflib.get_close_matches(cleaned_desc, list(BRAND_SEED.keys()), n=1, cutoff=0.6)
     if matches:
         return BRAND_SEED[matches[0]]
@@ -71,7 +83,6 @@ def get_domain(url):
         return None
     try:
         domain = urlparse(url).netloc.replace("www.", "")
-        # Remove .com or .us to get base retailer name
         if domain.endswith(".com"):
             return domain[:-4]
         elif domain.endswith(".us"):
@@ -81,13 +92,8 @@ def get_domain(url):
         return None
 
 def get_clean_domains(links_or_sources):
-    """Extract and clean domains, filtering out non-retail sites."""
     domains = []
-    skip_these = [
-        "facebook", "instagram", "twitter", "linkedin", "youtube", "reddit", "tiktok",
-        "wikipedia", "forbes", "bloomberg", "cnn", "wsj", "nytimes", "yelp",
-        "tripadvisor", "mapquest", "google", "apple", "microsoft"
-    ]
+    skip_these = ["facebook", "instagram", "twitter", "linkedin", "youtube", "reddit", "tiktok", "wikipedia", "forbes", "bloomberg", "cnn", "wsj", "nytimes", "yelp", "tripadvisor", "mapquest", "google", "apple", "microsoft"]
     for link in links_or_sources:
         domain = get_domain(link)
         if domain and not any(skip in domain.lower() for skip in skip_these):
@@ -95,7 +101,6 @@ def get_clean_domains(links_or_sources):
     return domains
 
 def analyze_domain_uniqueness(domains):
-    """Determines the top domain and if it's a unique, clear winner with relaxed criteria."""
     if not domains:
         return "Not found", "No"
     
@@ -103,17 +108,14 @@ def analyze_domain_uniqueness(domains):
     most_common_list = domain_counts.most_common(2)
     top_domain, top_count = most_common_list[0]
     
-    is_dominant = "No"
-    if top_count > 0:  # Relaxed condition to accept any domain with at least one occurrence
-        is_dominant = "Yes" if len(most_common_list) == 1 or top_count > most_common_list[1][1] else "Yes"
+    is_dominant = "Yes" if top_count > 0 and (len(most_common_list) == 1 or top_count > most_common_list[1][1]) else "No"
     return top_domain, is_dominant
 
 # --- Streamlit App UI ---
-
 st.set_page_config(page_title="Intelligent Brand Validator", page_icon="🧠", layout="centered")
 
 st.title("🧠 Intelligent Brand Validator")
-st.caption("Validates brand presence using exact match first, fuzzy fallback, and web search for better Google-like accuracy (no API required in demo).")
+st.caption("Validates with exact match, fuzzy fallback, and Google Custom Search for accurate 'retailer site' verification.")
 
 st.header("1. Upload Your File")
 uploaded_file = st.file_uploader("Your CSV must have a 'description' column.", type=["csv"])
@@ -126,6 +128,9 @@ if uploaded_file:
             st.stop()
         
         st.success(f"File uploaded! Found {len(df)} brands to analyze.")
+        
+        # Get Google service
+        service, cse_id = get_custom_search_service()
         
         st.header("2. Start Analysis")
         start_btn = st.button("Validate Brand Presence", type="primary", use_container_width=True)
@@ -141,42 +146,36 @@ if uploaded_file:
                     description = str(row['description'])
                     status_text.text(f"Processing {idx + 1}/{total}: {description[:50]}...")
                     
-                    # --- PASS 1: Exact match on original description
-                    brand_info = None
-                    if description.upper().strip() in BRAND_SEED:
-                        brand_info = BRAND_SEED[description.upper().strip()]
+                    # PASS 1: Exact match
+                    orig_desc = description.upper().strip()
+                    if orig_desc in BRAND_SEED:
+                        brand_info = BRAND_SEED[orig_desc]
                         final_status = "Yes"
                     else:
                         final_status = "No"
                         brand_info = {"retailer": "Not found", "logo_source": None}
                     
-                    # --- PASS 2: Fuzzy fallback if exact fails
+                    # PASS 2: Fuzzy fallback
                     if final_status == "No":
                         brand_info = find_brand_match(description)
                         web_domains = get_clean_domains([brand_info["retailer"]]) if brand_info["retailer"] != "Not found" else []
-                        top_retailer, web_status = analyze_domain_uniqueness(web_domains)
-
+                        top_retailer_temp, web_status = analyze_domain_uniqueness(web_domains)
                         logo_domains = get_clean_domains([brand_info["logo_source"]]) if brand_info["logo_source"] else []
                         top_logo_source, image_status = analyze_domain_uniqueness(logo_domains)
-
                         final_status = "Yes" if web_status == "Yes" or image_status == "Yes" else "No"
                     
                     top_retailer = get_domain(brand_info["retailer"]) if brand_info["retailer"] != "Not found" else "Not found"
                     
-                    # --- NEW: Web Search Override if still "No"
+                    # PASS 3: Google Custom Search Override if "No"
                     if final_status == "No":
-                        search_domain = web_search_for_retailer(description)
-                        if search_domain and search_domain in KNOWN_DOMAINS:
-                            # Find the retailer name from BRAND_SEED
-                            for key, info in BRAND_SEED.items():
-                                if info["retailer"] == search_domain:
-                                    top_retailer = get_domain(search_domain)
-                                    final_status = "Yes"
-                                    st.info(f"Web search override: '{description}' matched '{top_retailer}' from Google results.")
-                                    break
+                        search_domain = web_search_for_retailer(description, service, cse_id)
+                        if search_domain:
+                            top_retailer = get_domain(search_domain)
+                            final_status = "Yes"
+                            st.info(f"Google Search Override: '{description}' matched '{top_retailer}' (top result domain: {search_domain}).")
                     
-                    # Final fallback for logo
-                    if top_retailer == "Not found" and brand_info["logo_source"]:
+                    # Final fallback
+                    if top_retailer == "Not found" and brand_info.get("logo_source"):
                         top_retailer = get_domain(brand_info["logo_source"])
                     
                     results.append({'retailer': top_retailer, 'status': final_status})
@@ -192,7 +191,7 @@ if uploaded_file:
             df['status'] = results_df['status']
             
             st.header("3. Results")
-            st.markdown("status is 'Yes' if exact/fuzzy/web search matches a known official site (Google-verified).")
+            st.markdown("status is 'Yes' if exact/fuzzy/Google search matches a known official site.")
             st.dataframe(df, use_container_width=True)
             
             dominant_count = (df['status'] == 'Yes').sum()
@@ -205,4 +204,4 @@ if uploaded_file:
         st.error(f"An unexpected error occurred: {e}", icon="🔥")
 
 else:
-    st.info("Please upload a CSV file to get started.")
+    st.info("Please upload a CSV file to get started. Ensure GOOGLE_API_KEY and SEARCH_ENGINE_ID are in secrets.toml.")
