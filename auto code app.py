@@ -10,8 +10,7 @@ def normalize_description(desc):
         'dollrgeneral': 'dollargeneral',
         'dullarree': 'dollartree',
         'dollarree': 'dollartree',
-        'dollar genral': 'dollargeneral',
-        'dollar genral': 'dollargeneral',
+        'dollar genral': 'dollargeneral'
         # Add more common misspellings here
     }
     return corrections.get(desc, desc)
@@ -58,4 +57,3 @@ if uploaded_file:
         st.success("Processing complete. Download the output file below.")
         with open(output_file, "rb") as f:
             st.download_button("Download Output Excel", f, file_name=output_file)
-``
