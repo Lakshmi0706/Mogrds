@@ -15,21 +15,27 @@ if merchant_file:
     merchant_list = merchant_df.iloc[:, 0].dropna().astype(str).unique().tolist()
     merchant_list = [m.upper().strip() for m in merchant_list]
 
-# Function to clean OCR text (basic cleanup)
+# Clean OCR text
 def clean_text(text):
     text = re.sub(r'[^a-zA-Z0-9 ]', '', text)
     return re.sub(r'\s+', ' ', text).strip().upper()
 
-# Find best merchant match
+# Word-level matching with confidence score
 def get_best_match(text):
+    words = text.split()
     best_match = None
-    highest_ratio = 0.0
+    best_score = 0.0
+
     for merchant in merchant_list:
+        merchant_words = merchant.split()
+        match_count = sum(1 for w in words if w in merchant_words)
         ratio = SequenceMatcher(None, text, merchant).ratio()
-        if ratio > highest_ratio and abs(len(text) - len(merchant)) <= 3:
-            highest_ratio = ratio
+        score = max(ratio, match_count / len(merchant_words))  # Combine ratio + word overlap
+        if score > best_score:
+            best_score = score
             best_match = merchant
-    return best_match
+
+    return best_match, best_score
 
 # Perform DuckDuckGo search
 def find_retailer(query):
@@ -49,7 +55,7 @@ def find_retailer(query):
         return "Not Found", "Not OK"
 
 # Streamlit UI
-st.title("Retailer Identification with Best Match Logic")
+st.title("Retailer Identification with Confidence Score")
 
 uploaded_file = st.file_uploader("Upload Excel File with 'Description' column", type=["xlsx"])
 
@@ -60,6 +66,7 @@ if uploaded_file and merchant_list:
     else:
         cleaned_descriptions = []
         merchant_hints = []
+        confidence_scores = []
         final_queries = []
         retailer_names = []
         statuses = []
@@ -70,14 +77,15 @@ if uploaded_file and merchant_list:
 
         for i, desc in enumerate(df['Description']):
             cleaned_desc = clean_text(str(desc))
-            merchant_hint = get_best_match(cleaned_desc)
-            query = merchant_hint if merchant_hint else cleaned_desc
+            merchant_hint, confidence = get_best_match(cleaned_desc)
+            query = merchant_hint if merchant_hint and confidence >= 0.8 else cleaned_desc
             retailer, status = find_retailer(f"{query} retailer OR store OR brand")
             if retailer == "Not Found" and merchant_hint:
                 retailer = merchant_hint
                 status = "Corrected"
             cleaned_descriptions.append(cleaned_desc)
             merchant_hints.append(merchant_hint if merchant_hint else "")
+            confidence_scores.append(round(confidence, 2))
             final_queries.append(query)
             retailer_names.append(retailer)
             statuses.append(status)
@@ -88,6 +96,7 @@ if uploaded_file and merchant_list:
 
         df['Cleaned Description'] = cleaned_descriptions
         df['Merchant Hint'] = merchant_hints
+        df['Confidence Score'] = confidence_scores
         df['Final Query'] = final_queries
         df['Retailer Name'] = retailer_names
         df['Status'] = statuses
