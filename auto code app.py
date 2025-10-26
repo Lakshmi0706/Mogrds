@@ -25,7 +25,6 @@ def get_best_match(text):
     words = text.split()
     best_match = None
     best_score = 0.0
-
     for merchant in merchant_list:
         merchant_words = merchant.split()
         match_count = sum(1 for w in words if w in merchant_words)
@@ -120,4 +119,3 @@ if uploaded_file and merchant_list:
 
         st.success("Processing complete. Download the output file below.")
         st.download_button("Download Output Excel", output, file_name="retailer_output.xlsx")
-``
