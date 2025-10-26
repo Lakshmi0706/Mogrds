@@ -1,35 +1,36 @@
 import streamlit as st
 import pandas as pd
 import re
-from duckduckgo_search import DDGS
+from googlesearch import search
 import tldextract
 from io import BytesIO
 
-# Normalize description
-def normalize_description(desc):
-    desc = re.sub(r'[^a-zA-Z0-9 ]', '', desc)
-    return desc.strip()
+# Step 1: Clean OCR text dynamically
+def clean_ocr_text(text):
+    # Remove special characters and normalize spaces
+    text = re.sub(r'[^a-zA-Z0-9 ]', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
-# Perform DuckDuckGo search
+# Step 2: Perform Google search
 def find_retailer(desc):
-    query = f"{normalize_description(desc)} retailer"
+    cleaned = clean_ocr_text(desc)
+    query = f"{cleaned} retailer OR store OR brand"
     exclude_domains = ['facebook.com', 'instagram.com', 'justdial.com', 'wikipedia.org', 'google.com/maps']
     try:
-        with DDGS() as ddgs:
-            results = ddgs.text(query, max_results=10)
-            for r in results:
-                url = r.get("href", "")
-                if any(domain in url for domain in exclude_domains):
-                    continue
-                ext = tldextract.extract(url)
-                if ext.domain:
-                    return ext.domain.title(), "OK"
+        results = search(query, num_results=10)
+        for url in results:
+            if any(domain in url for domain in exclude_domains):
+                continue
+            ext = tldextract.extract(url)
+            if ext.domain:
+                return ext.domain.title(), "OK"
         return "Not Found", "Not OK"
     except Exception:
         return "Not Found", "Not OK"
 
-# Streamlit UI
-st.title("Retailer Identification from Description (DuckDuckGo)")
+# Step 3: Streamlit UI
+st.title("Retailer Identification from Description (Google Search)")
 
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
@@ -52,7 +53,6 @@ if uploaded_file:
 
         df['Retailer Name'] = retailer_names
         df['Status'] = statuses
-
         # Prepare file for download
         output = BytesIO()
         df.to_excel(output, index=False, engine='openpyxl')
