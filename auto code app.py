@@ -1,32 +1,35 @@
 import streamlit as st
 import pandas as pd
 import re
-from googlesearch import search  # Make sure googlesearch-python is installed
+from duckduckgo_search import DDGS
+import tldextract
+from io import BytesIO
 
 # Normalize description
 def normalize_description(desc):
-    desc = desc.lower()
-    desc = re.sub(r'[^a-z0-9 ]', '', desc)  # Keep alphanumeric and spaces
+    desc = re.sub(r'[^a-zA-Z0-9 ]', '', desc)
     return desc.strip()
 
-# Perform Google search
+# Perform DuckDuckGo search
 def find_retailer(desc):
-    query = normalize_description(desc)
+    query = f"{normalize_description(desc)} retailer"
     exclude_domains = ['facebook.com', 'instagram.com', 'justdial.com', 'wikipedia.org', 'google.com/maps']
     try:
-        results = search(query, num_results=10)
-        for url in results:
-            if any(domain in url for domain in exclude_domains):
-                continue
-            if '.com' in url or '.org' in url:
-                retailer_name = url.split('//')[-1].split('.')[0].title()
-                return retailer_name, 'OK'
-        return 'Not Found', 'Not OK'
+        with DDGS() as ddgs:
+            results = ddgs.text(query, max_results=10)
+            for r in results:
+                url = r.get("href", "")
+                if any(domain in url for domain in exclude_domains):
+                    continue
+                ext = tldextract.extract(url)
+                if ext.domain:
+                    return ext.domain.title(), "OK"
+        return "Not Found", "Not OK"
     except Exception:
-        return 'Not Found', 'Not OK'
+        return "Not Found", "Not OK"
 
 # Streamlit UI
-st.title("Retailer Identification from Description")
+st.title("Retailer Identification from Description (DuckDuckGo)")
 
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
@@ -38,17 +41,23 @@ if uploaded_file:
         retailer_names = []
         statuses = []
 
-        for desc in df['Description']:
+        progress_bar = st.progress(0)
+        total = len(df)
+
+        for i, desc in enumerate(df['Description']):
             retailer, status = find_retailer(str(desc))
             retailer_names.append(retailer)
             statuses.append(status)
+            progress_bar.progress((i + 1) / total)
 
         df['Retailer Name'] = retailer_names
         df['Status'] = statuses
 
-        output_file = "retailer_output.xlsx"
-        df.to_excel(output_file, index=False)
+        # Prepare file for download
+        output = BytesIO()
+        df.to_excel(output, index=False, engine='openpyxl')
+        output.seek(0)
 
         st.success("Processing complete. Download the output file below.")
-        with open(output_file, "rb") as f:
-            st.download_button("Download Output Excel", f, file_name=output_file)
+        st.download_button("Download Output Excel", output, file_name="retailer_output.xlsx")
+``
