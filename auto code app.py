@@ -78,14 +78,24 @@ if uploaded_file and merchant_list:
         for i, desc in enumerate(df['Description']):
             cleaned_desc = clean_text(str(desc))
             merchant_hint, confidence = get_best_match(cleaned_desc)
-            query = merchant_hint if merchant_hint and confidence >= 0.8 else cleaned_desc
+            confidence_percent = round(confidence * 100, 2)
+
+            # Decide query based on confidence threshold
+            if merchant_hint and confidence >= 0.8:
+                query = merchant_hint
+            else:
+                query = cleaned_desc
+
             retailer, status = find_retailer(f"{query} retailer OR store OR brand")
-            if retailer == "Not Found" and merchant_hint:
+
+            # Fallback only if confidence >= 80%
+            if retailer == "Not Found" and merchant_hint and confidence >= 0.8:
                 retailer = merchant_hint
                 status = "Corrected"
+
             cleaned_descriptions.append(cleaned_desc)
             merchant_hints.append(merchant_hint if merchant_hint else "")
-            confidence_scores.append(round(confidence, 2))
+            confidence_scores.append(f"{confidence_percent}%")
             final_queries.append(query)
             retailer_names.append(retailer)
             statuses.append(status)
@@ -110,3 +120,4 @@ if uploaded_file and merchant_list:
 
         st.success("Processing complete. Download the output file below.")
         st.download_button("Download Output Excel", output, file_name="retailer_output.xlsx")
+``
