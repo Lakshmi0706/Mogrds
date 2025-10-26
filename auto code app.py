@@ -12,7 +12,8 @@ merchant_list = []
 
 if merchant_file:
     merchant_df = pd.read_excel(merchant_file, sheet_name="fetch", engine="openpyxl")
-    merchant_list = merchant_df.iloc[:, 0].dropna().unique().tolist()
+    # Drop NaN and convert to string before upper()
+    merchant_list = merchant_df.iloc[:, 0].dropna().astype(str).unique().tolist()
     merchant_list = [m.upper().strip() for m in merchant_list]
 
 # Function to clean OCR text using merchant list
