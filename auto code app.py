@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
-from googlesearch import search  # pip install googlesearch-python
+from googlesearch import search  # Make sure googlesearch-python is installed
 
 # Normalize description
 def normalize_description(desc):
@@ -18,7 +18,6 @@ def find_retailer(desc):
         for url in results:
             if any(domain in url for domain in exclude_domains):
                 continue
-            # If official retailer site found
             if '.com' in url or '.org' in url:
                 retailer_name = url.split('//')[-1].split('.')[0].title()
                 return retailer_name, 'OK'
