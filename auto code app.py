@@ -12,7 +12,6 @@ merchant_list = []
 
 if merchant_file:
     merchant_df = pd.read_excel(merchant_file, sheet_name="fetch", engine="openpyxl")
-    # Drop NaN and convert to string before upper()
     merchant_list = merchant_df.iloc[:, 0].dropna().astype(str).unique().tolist()
     merchant_list = [m.upper().strip() for m in merchant_list]
 
@@ -22,6 +21,9 @@ def clean_ocr_text(text):
     text = re.sub(r'\s+', ' ', text).strip().upper()
     words = text.split()
     corrected_words = []
+    best_match_overall = None
+    highest_ratio_overall = 0.0
+
     for word in words:
         best_match = word
         highest_ratio = 0.0
@@ -31,11 +33,18 @@ def clean_ocr_text(text):
                 highest_ratio = ratio
                 best_match = merchant
         corrected_words.append(best_match)
-    return ' '.join(corrected_words)
+        if highest_ratio > highest_ratio_overall:
+            highest_ratio_overall = highest_ratio
+            best_match_overall = best_match
+
+    corrected_text = ' '.join(corrected_words)
+    return corrected_text, best_match_overall
 
 # Perform DuckDuckGo search
-def find_retailer(desc):
+def find_retailer(desc, merchant_hint=None):
     query = f"{desc} retailer OR store OR brand"
+    if merchant_hint:
+        query = f"{merchant_hint} retailer OR store OR brand"
     exclude_domains = ['facebook.com', 'instagram.com', 'justdial.com', 'wikipedia.org', 'google.com/maps']
     try:
         with DDGS() as ddgs:
@@ -63,20 +72,29 @@ if uploaded_file and merchant_list:
     else:
         retailer_names = []
         statuses = []
+        cleaned_descriptions = []
+        merchant_hints = []
 
         progress_bar = st.progress(0)
         status_text = st.empty()
         total = len(df)
 
         for i, desc in enumerate(df['Description']):
-            cleaned_desc = clean_ocr_text(str(desc))
-            retailer, status = find_retailer(cleaned_desc)
+            cleaned_desc, merchant_hint = clean_ocr_text(str(desc))
+            retailer, status = find_retailer(cleaned_desc, merchant_hint)
+            if retailer == "Not Found" and merchant_hint:
+                retailer = merchant_hint
+                status = "Corrected"
             retailer_names.append(retailer)
             statuses.append(status)
+            cleaned_descriptions.append(cleaned_desc)
+            merchant_hints.append(merchant_hint if merchant_hint else "")
             percent_complete = int(((i + 1) / total) * 100)
             progress_bar.progress((i + 1) / total)
             status_text.text(f"Processing {i + 1}/{total} ({percent_complete}%)")
 
+        df['Cleaned Description'] = cleaned_descriptions
+        df['Merchant Hint'] = merchant_hints
         df['Retailer Name'] = retailer_names
         df['Status'] = statuses
 
