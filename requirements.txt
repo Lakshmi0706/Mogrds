@@ -1,4 +1,5 @@
-googlesearch-python
-openpyxl
-pandas
 streamlit
+pandas
+openpyxl
+duckduckgo-search
+tldextract
