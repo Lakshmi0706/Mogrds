@@ -1,33 +1,30 @@
 import streamlit as st
 import pandas as pd
 import re
+from googlesearch import search  # pip install googlesearch-python
 
-# Function to normalize description
+# Normalize description
 def normalize_description(desc):
     desc = desc.lower()
-    desc = re.sub(r'[^a-z0-9]', '', desc)  # Remove non-alphanumeric characters
-    corrections = {
-        'dollrgeneral': 'dollargeneral',
-        'dullarree': 'dollartree',
-        'dollarree': 'dollartree',
-        'dollar genral': 'dollargeneral'
-        # Add more common misspellings here
-    }
-    return corrections.get(desc, desc)
+    desc = re.sub(r'[^a-z0-9 ]', '', desc)  # Keep alphanumeric and spaces
+    return desc.strip()
 
-# Simulated manual Google search
-def simulate_google_search(normalized_desc):
-    retailer_websites = {
-        'dollargeneral': 'https://www.dollargeneral.com',
-        'dollartree': 'https://www.dollartree.com',
-        'walmart': 'https://www.walmart.com',
-        'target': 'https://www.target.com'
-        # Add more known retailers here
-    }
-    for key in retailer_websites:
-        if key in normalized_desc:
-            return key.title(), 'OK'
-    return 'Not Found', 'Not OK'
+# Perform Google search
+def find_retailer(desc):
+    query = normalize_description(desc)
+    exclude_domains = ['facebook.com', 'instagram.com', 'justdial.com', 'wikipedia.org', 'google.com/maps']
+    try:
+        results = search(query, num_results=10)
+        for url in results:
+            if any(domain in url for domain in exclude_domains):
+                continue
+            # If official retailer site found
+            if '.com' in url or '.org' in url:
+                retailer_name = url.split('//')[-1].split('.')[0].title()
+                return retailer_name, 'OK'
+        return 'Not Found', 'Not OK'
+    except Exception:
+        return 'Not Found', 'Not OK'
 
 # Streamlit UI
 st.title("Retailer Identification from Description")
@@ -43,8 +40,7 @@ if uploaded_file:
         statuses = []
 
         for desc in df['Description']:
-            normalized = normalize_description(str(desc))
-            retailer, status = simulate_google_search(normalized)
+            retailer, status = find_retailer(str(desc))
             retailer_names.append(retailer)
             statuses.append(status)
 
