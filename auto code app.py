@@ -5,7 +5,6 @@ import re
 from rapidfuzz import fuzz, process
 from io import BytesIO
 
-# === Streamlit UI ===
 st.title("Merchant Mapping Tool with Fuzzy Matching (Top 3 Matches)")
 
 uploaded_merchant = st.file_uploader("Upload Merchant List", type=["xlsx"])
@@ -14,28 +13,23 @@ uploaded_input = st.file_uploader("Upload Input File", type=["xlsx"])
 confidence_threshold = st.slider("Confidence Threshold (%)", 50, 100, 80)
 
 if uploaded_merchant and uploaded_input:
-    # === Load Merchant List ===
     merchant_df = pd.read_excel(uploaded_merchant, sheet_name="fetch", engine="openpyxl")
     merchant_list = merchant_df.iloc[:, 0].dropna().astype(str).unique().tolist()
     merchant_list = [m.upper().strip() for m in merchant_list]
 
-    # === Load Input File ===
     input_df = pd.read_excel(uploaded_input, engine="openpyxl")
 
     if 'Description' not in input_df.columns:
         st.error("Input file must contain a 'Description' column.")
     else:
-        # === Clean Text Function ===
         def clean_text(text):
             text = re.sub(r'[^a-zA-Z0-9 ]', '', str(text))
             return re.sub(r'\s+', ' ', text).strip().upper()
 
-        # === Get Top Matches ===
         def get_top_matches(text, limit=3):
             matches = process.extract(text, merchant_list, scorer=fuzz.token_sort_ratio, limit=limit)
             return [(m[0], round(m[1], 2)) for m in matches]
 
-        # === Process Data ===
         output_data = []
         for i, desc in enumerate(input_df['Description'], start=1):
             cleaned_desc = clean_text(desc)
@@ -54,11 +48,9 @@ if uploaded_merchant and uploaded_input:
             })
 
         output_df = pd.DataFrame(output_data)
-
-        # === Display Output ===
         st.write("### Output Preview", output_df)
 
-        # === Download Button ===
+        # Download button
         output_buffer = BytesIO()
         output_df.to_excel(output_buffer, index=False, engine="openpyxl")
         output_buffer.seek(0)
