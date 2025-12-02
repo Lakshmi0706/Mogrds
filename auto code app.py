@@ -14,8 +14,11 @@ confidence_threshold = st.slider("Confidence Threshold (%)", 50, 100, 80)
 
 if uploaded_merchant and uploaded_input:
     # Load Merchant List
-    merchant_df = pd.read_excel(uploaded_merchant, sheet_name="fetch", engine="openpyxl")
-    original_merchants = merchant_df.iloc[:, 0].dropna().astype(str).unique().tolist()
+    merchant_df = pd.read_excel(uploaded_merchant, engine="openpyxl")
+    
+    # Use the correct column name from your file
+    merchant_column = "list"  # This is confirmed from your file
+    original_merchants = merchant_df[merchant_column].dropna().astype(str).unique().tolist()
 
     # Create mapping: UPPERCASE -> Original Name
     merchant_map = {m.upper().strip(): m for m in original_merchants}
