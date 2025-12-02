@@ -15,8 +15,11 @@ confidence_threshold = st.slider("Confidence Threshold (%)", 50, 100, 80)
 if uploaded_merchant and uploaded_input:
     # Load Merchant List
     merchant_df = pd.read_excel(uploaded_merchant, sheet_name="fetch", engine="openpyxl")
-    merchant_list = merchant_df.iloc[:, 0].dropna().astype(str).unique().tolist()
-    merchant_list = [m.upper().strip() for m in merchant_list]
+    original_merchants = merchant_df.iloc[:, 0].dropna().astype(str).unique().tolist()
+
+    # Create mapping: UPPERCASE -> Original Name
+    merchant_map = {m.upper().strip(): m for m in original_merchants}
+    merchant_list = list(merchant_map.keys())  # Uppercase list for matching
 
     # Load Input File
     input_df = pd.read_excel(uploaded_input, engine="openpyxl")
@@ -32,7 +35,8 @@ if uploaded_merchant and uploaded_input:
         # Get top matches
         def get_top_matches(text, limit=3):
             matches = process.extract(text, merchant_list, scorer=fuzz.token_sort_ratio, limit=limit)
-            return [(m[0], round(m[1], 2)) for m in matches]
+            # Convert back to original names using merchant_map
+            return [(merchant_map[m[0]], round(m[1], 2)) for m in matches]
 
         # Process data
         output_data = []
