@@ -1,58 +1,70 @@
+
+import streamlit as st
 import pandas as pd
 import re
-from difflib import SequenceMatcher
- 
-# === Load Merchant List ===
-merchant_df = pd.read_excel("merchant list.xlsx", sheet_name="fetch", engine="openpyxl")
-merchant_list = merchant_df.iloc[:, 0].dropna().astype(str).unique().tolist()
-merchant_list = [m.upper().strip() for m in merchant_list]
- 
-# === Load Input File ===
-# Replace 'input.xlsx' with your actual input file name
-input_df = pd.read_excel("input.xlsx", engine="openpyxl")
- 
-# Validate column
-if 'Description' not in input_df.columns:
-    raise ValueError("Input file must contain a 'Description' column.")
- 
-# === Clean Text Function ===
-def clean_text(text):
-    text = re.sub(r'[^a-zA-Z0-9 ]', '', str(text))
-    return re.sub(r'\s+', ' ', text).strip().upper()
- 
-# === Matching Function ===
-def get_best_match(text):
-    words = text.split()
-    best_match = None
-    best_score = 0.0
-    for merchant in merchant_list:
-        merchant_words = merchant.split()
-        match_count = sum(1 for w in words if w in merchant_words)
-        ratio = SequenceMatcher(None, text, merchant).ratio()
-        score = max(ratio, match_count / len(merchant_words))
-        if score > best_score:
-            best_score = score
-            best_match = merchant
-    return best_match, best_score
- 
-# === Process Data ===
-output_data = []
-for i, desc in enumerate(input_df['Description'], start=1):
-    cleaned_desc = clean_text(desc)
-    merchant_hint, confidence = get_best_match(cleaned_desc)
-    confidence_percent = round(confidence * 100, 2)
-    status = "Yes" if merchant_hint and confidence >= 0.8 else "No"
-    output_data.append({
-        "S.No": i,
-        "Original Description": desc,
-        "Confidence Score": f"{confidence_percent}%",
-        "Merchant List Match": merchant_hint if merchant_hint else "Not Found",
-        "Status": status
-    })
- 
-# === Create Output DataFrame ===
-output_df = pd.DataFrame(output_data)
- 
-# === Save Output ===
-output_df.to_excel("merchant_mapping_output.xlsx", index=False, engine="openpyxl")
-print("Output file generated: merchant_mapping_output.xlsx")
+from rapidfuzz import fuzz, process
+from io import BytesIO
+
+# === Streamlit UI ===
+st.title("Merchant Mapping Tool with Fuzzy Matching (Top 3 Matches)")
+
+uploaded_merchant = st.file_uploader("Upload Merchant List", type=["xlsx"])
+uploaded_input = st.file_uploader("Upload Input File", type=["xlsx"])
+
+confidence_threshold = st.slider("Confidence Threshold (%)", 50, 100, 80)
+
+if uploaded_merchant and uploaded_input:
+    # === Load Merchant List ===
+    merchant_df = pd.read_excel(uploaded_merchant, sheet_name="fetch", engine="openpyxl")
+    merchant_list = merchant_df.iloc[:, 0].dropna().astype(str).unique().tolist()
+    merchant_list = [m.upper().strip() for m in merchant_list]
+
+    # === Load Input File ===
+    input_df = pd.read_excel(uploaded_input, engine="openpyxl")
+
+    if 'Description' not in input_df.columns:
+        st.error("Input file must contain a 'Description' column.")
+    else:
+        # === Clean Text Function ===
+        def clean_text(text):
+            text = re.sub(r'[^a-zA-Z0-9 ]', '', str(text))
+            return re.sub(r'\s+', ' ', text).strip().upper()
+
+        # === Get Top Matches ===
+        def get_top_matches(text, limit=3):
+            matches = process.extract(text, merchant_list, scorer=fuzz.token_sort_ratio, limit=limit)
+            return [(m[0], round(m[1], 2)) for m in matches]
+
+        # === Process Data ===
+        output_data = []
+        for i, desc in enumerate(input_df['Description'], start=1):
+            cleaned_desc = clean_text(desc)
+            top_matches = get_top_matches(cleaned_desc)
+            top_matches_str = "; ".join([f"{m[0]} ({m[1]}%)" for m in top_matches])
+            best_match = top_matches[0][0] if top_matches else "Not Found"
+            best_score = top_matches[0][1] if top_matches else 0
+            status = "Yes" if best_score >= confidence_threshold else "No"
+            output_data.append({
+                "S.No": i,
+                "Original Description": desc,
+                "Top 3 Matches": top_matches_str,
+                "Best Match": best_match,
+                "Confidence Score": f"{best_score}%",
+                "Status": status
+            })
+
+        output_df = pd.DataFrame(output_data)
+
+        # === Display Output ===
+        st.write("### Output Preview", output_df)
+
+        # === Download Button ===
+        output_buffer = BytesIO()
+        output_df.to_excel(output_buffer, index=False, engine="openpyxl")
+        output_buffer.seek(0)
+        st.download_button(
+            label="Download Output",
+            data=output_buffer,
+            file_name="merchant_mapping_output.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
