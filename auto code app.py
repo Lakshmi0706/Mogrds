@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import re
@@ -64,3 +65,10 @@ if uploaded_merchant and uploaded_input:
         # Download button
         output_buffer = BytesIO()
         output_df.to_excel(output_buffer, index=False, engine="openpyxl")
+        output_buffer.seek(0)
+        st.download_button(
+            label="Download Output",
+            data=output_buffer,
+            file_name="merchant_mapping_output.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
